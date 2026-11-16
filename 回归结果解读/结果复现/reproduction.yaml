@@ -1,0 +1,146 @@
+# =========================
+# reproduction.yaml
+# 结果复现/展示模块配置
+# =========================
+# 本文件只负责告诉复现模块“选哪条设定、生成哪版 do、输出到哪里”。
+# 回归公式、控制变量和预处理名单应从基准检验的运行快照读取，
+# 不要在这里重新手写，以免与当时实际运行的模型不一致。
+# 本文件中的相对路径，都从当前 reproduction.yaml 所在文件夹出发。
+# 普通用户通常只需改 source.synthesis_file 和 selection 下的两个 ID。
+# 执行同目录 run_reproduction.py 才会生成 do；单靠本 YAML 不会运行回归。
+
+config_version: "1.0"
+
+# 中文解释：
+# config_version：本配置文件的格式版本，不是基准检验全局 YAML 的版本。
+# 小白提醒：通常不用修改；只有复现模块明确要求升级格式时才改。
+
+
+# =========================
+# 一、结果从哪里读取
+# =========================
+source:
+  synthesis_file: "../基准检验/output/公开演示/2018-2023（纯合成演示）/result_synthesis/merged_full_results.xlsx"
+
+# 中文解释：
+# source：本次要使用哪一个基准检验项目、哪一个样本的综合结果。
+# synthesis_file：result_synthesis 文件夹内的 merged_full_results.xlsx
+# 或 merged_full_results.csv。程序从文件所在目录定位各模块机器结果。
+# 这里填写文件路径，可使用绝对路径或相对路径。
+# 小白提醒：换项目或换样本时先改这里；仅修改文件夹名不会重新筛选数据。
+# 如果目录仍指向旧项目，即使下面改了 ID，也找不到对应的历史结果。
+
+
+# =========================
+# 二、选哪一条公共设定
+# =========================
+selection:
+  run_id: "请从merged_full_results表复制run_id"
+  specification_id: "请从同一行复制specification_id"
+
+# 中文解释：
+# selection：从上面的综合结果目录，精确选出这次要复现的一条设定。
+# run_id：基准检验的运行批次编号，在综合表 run_id 列中查找。
+# specification_id：公共设定的身份编号，在综合表同名列中查找。
+# 两个 ID 要与同一行对应；程序应只找到一条记录，找到零条或多条都要停止核查。
+# “模型合并ID”只是本轮展示编号，重新整合后可能变化；
+# 不要仅凭这一编号判断历史模型身份。
+# 小白提醒：直接从综合表目标行复制 run_id 和 specification_id，
+# 不要复制某个单独假设的 model_id，也不要自行拼写或修改这两个 ID。
+
+
+# =========================
+# 三、生成哪种 do 文件
+# =========================
+# 可填 both、exact 或 beginner；普通用户建议先选 both 方便对照。
+versions: both
+
+# 中文解释：
+# both：生成“精确复现版”和“初学者简明复测版”两份 do。
+# exact：只生成按历史 Python 口径复现已执行 C 阶段模型的 do。
+# beginner：只生成使用常见 Stata 命令的简明 do，可按下方范围补跑假设。
+# 小白提醒：生成文件不等于已经执行回归；论文表格也不能仅靠 do 生成。
+
+
+# =========================
+# 四、精确复现版的范围
+# =========================
+exact:
+  scope: historical_c_only
+
+# 中文解释：
+# historical_c_only：只复现该 specification_id 下真正存在的 C 阶段模型。
+# 如果某些假设没有这条公共设定下的 C 结果，不能冒充历史模型。
+# 精确版从运行时配置快照、预处理定义和模型项定义重建处理与回归，
+# 不采用用户后来修改的当前 YAML，也不使用简明版的近似处理命令。
+# 小白提醒：这里不要填写假设名单；是否存在历史 C 结果由机器文件决定。
+
+
+# =========================
+# 五、初学者简明复测版
+# =========================
+beginner:
+  hypotheses: all_enabled
+  interpolation: ipolate_epolate
+  winsorize: winsor2
+  estimator: reghdfe
+
+# 中文解释：
+# beginner.hypotheses：简明版要检验的假设范围。
+# all_enabled 表示读取历史模块快照中启用的全部假设。只想检验部分假设时，
+# 可改成 YAML 列表，例如 hypotheses: ["H1a", "H1b", "W1"]。
+# 即使某条假设没有历史 C 结果，简明版也可以新增一次“定向补充复测”；
+# 这属于新运行，不会改写原 synthesis 表里的“缺少 C 结果”。
+# interpolation: ipolate_epolate 表示企业内按年份插值，首尾使用线性外推。
+# 原 Python 对相应首尾缺失使用最近观测值，因此简明版数值可能不同。
+# winsorize: winsor2 表示用 Stata 扩展命令做缩尾，不是删除极端观测。
+# 1%/99% 分位点和全样本范围仍应由历史预处理定义决定；
+# winsor2 的分位点算法与 Python 可能不同，不能保证逐位一致。
+# estimator: reghdfe 表示吸收历史设定中的企业和年份固定效应。
+# reghdfe 可能处理单例观测或自由度的方式不同，N、标准误和 p 值须核对。
+# 小白提醒：winsor2 和 reghdfe 是外部 Stata 扩展；使用前应检查是否安装。
+# 不要因为看到论文里常用 robust/cluster 就自行加上：标准误口径应先服从历史设定。
+
+
+# =========================
+# 六、输出文件与论文表名
+# =========================
+output:
+  reproduction_subdir: "result_reproduction_v3"
+  paper_table_dir: "../../回归结果输出"
+  table_title: "基准效应回归结果"
+  paper_tables_after_verification: true
+  overwrite_existing: false
+
+# 中文解释：
+# reproduction_subdir：在所选样本目录下单独存放 do、Stata 日志、
+# 复现方案、结构化估计结果及核验记录的文件夹名。后续还应按
+# run_id/specification_id 分层，避免不同设定互相覆盖。
+# v3 使用独立目录保留此前的复现文件和估计结果。
+# paper_table_dir：论文三线表的输出目录，与 do/日志目录分开；
+# 这里是相对于本 reproduction.yaml 的路径。
+# table_title：论文表格显示的标题，可按论文内容修改；只影响展示文字，
+# 不决定因变量、模型公式或回归结果。
+# paper_tables_after_verification：true 表示只有 Stata 实际运行且结果经
+# 核验后才能生成含主效应、中介效应、调节效应三张工作表的 Excel；
+# 未运行时最多输出待执行 do 和方案。do 另在已安装 esttab 时导出 RTF。
+# overwrite_existing：false 表示不允许静默覆盖同名旧结果；重新生成时
+# 应先检查目标路径，换编号或由用户明确处理旧文件。
+# 小白提醒：精确版和简明版的论文表应分开，不能将简明补跑的模型
+# 填入历史精确复现表；表中系数、标准误、星号只能来自该版实际估计值。
+
+
+# =========================
+# 七、运行权限与依赖
+# =========================
+execution:
+  run_stata_automatically: false
+  install_stata_packages_automatically: false
+
+# 中文解释：
+# run_stata_automatically：false 表示只生成供用户审阅的 do，
+# 不替用户启动 Stata；生成代码与执行回归是两件不同的事。
+# install_stata_packages_automatically：false 表示不自动联网安装
+# winsor2、reghdfe 等外部扩展；如果缺少依赖，应提示用户确认。
+# 小白提醒：建议保持两个 false。即使将来程序支持自动执行，
+# 改成 true 也不应绕过用户对运行和安装行为的明确授权。

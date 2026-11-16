@@ -1,0 +1,555 @@
+# =========================
+# synthesis.yaml
+# OPC / Auto-STATA 结果整合与设定曲线配置文件
+# =========================
+#
+# 本文件只保存“结果整合模块”自己的设定：
+# - 如何检查本轮启用的主效应、中介效应和调节效应
+# - 如何检查用户登记的假设是否都有结果
+# - 如何在同一公共设定下合并三类效应结果
+# - 如何按 C 阶段假设级结果生成 require / full / strong / weak 综合结果表
+# - 如何生成设定曲线数据、图片和稳健性陈述
+# - 如何筛选可展示案例，并为后续 Stata do-file 生成预留入口
+# 完整操作与字段读法见 ../../全局.md；本模块只接受当前项目运行清单中可核验的同批次结果。
+# 展示案例是已执行设定的筛查产物；本版只写结构化清单，不生成 do-file。
+#
+# 公共设定例如数据路径、样本区间、插值、缩尾、控制变量、固定效应、
+# 聚类标准误、输出根目录，请修改 analysis_config.yaml，不要写在本文件中。
+
+config_version: "2.1"
+module_name: "result_synthesis"
+enabled: true
+
+# 中文解释：
+# config_version：结果整合模块配置版本。这里使用 2.1，表示它是在基准检验 2.0 后新增的后处理模块。
+# module_name：当前模块名称，固定写 result_synthesis。
+# enabled：是否启用结果整合模块。后续还需要在全局 analysis_config.yaml 的 enabled_modules 中加入 result_synthesis。
+# 小白提醒：如果你只想先跑主效应/中介/调节，不想合并结果，可以把 enabled 改成 false。
+
+
+# =========================
+# 一、输入结果读取规则
+# =========================
+
+input:
+  module_selection_mode: "enabled_modules"
+  modules:
+    - "main_effect"
+    - "mediation_effect"
+    - "moderation_effect"
+
+  preferred_result_file: "standardized_results.csv"
+  fallback_result_file: "full_results.csv"
+  allow_fallback_to_full_results: false
+  fail_on_missing_enabled_module: false
+  fail_if_no_readable_results: true
+
+# 中文解释：
+# input：控制本模块读取哪些结果文件。
+# module_selection_mode：模块选择方式。
+# - enabled_modules：按全局 analysis_config.yaml 中 run_settings.enabled_modules 的开关读取，这是推荐值。
+# - listed_modules：只读取本文件 input.modules 中列出的模块，适合调试。
+# modules：当 module_selection_mode 为 listed_modules 时使用；默认仍列出三个效应模块，方便查看。
+# preferred_result_file：当前可核验整合固定使用 standardized_results.csv，请勿改名。
+# fallback_result_file / allow_fallback_to_full_results：旧版兼容字段；当前安全衔接不再回退读取宽表。
+# fail_on_missing_enabled_module：旧版兼容字段；当前启用且请求读取的模块缺少三份机器文件时始终停止。
+# fail_if_no_readable_results：如果没有任何可读取结果，是否停止。
+# 小白提醒：
+# - 一般不要改 preferred_result_file，因为 standardized_results.csv 是专门为跨模块合并设计的。
+# - 如果某个模块明明启用了却缺少标准化长表、设定索引或假设级判定，本模块会明确停止并提示重跑。
+
+
+# =========================
+# 二、模型结构核对规则
+# =========================
+
+model_structure_check:
+  enabled: true
+  check_global_enabled_modules: true
+  check_module_config_path: true
+  check_module_config_exists: true
+  check_module_enabled_flag: true
+  check_output_dir_exists: true
+  check_preferred_result_exists: true
+  check_fallback_result_exists: true
+  write_markdown_report: true
+  write_csv_report: true
+
+# 中文解释：
+# model_structure_check：运行合并前报告本轮模型结构是否完整；报告开关不放宽来源校验。
+# check_global_enabled_modules：检查全局 YAML 中哪些模块被启用。
+# check_module_config_path：检查全局 module_config_files 是否写了模块 YAML 路径。
+# check_module_config_exists：检查模块 YAML 文件是否真实存在。
+# check_module_enabled_flag：检查模块 YAML 自己的 enabled 是否为 true。
+# check_output_dir_exists：检查该模块是否已经生成 output 目录。
+# check_preferred_result_exists：检查 standardized_results.csv 是否存在。
+# check_fallback_result_exists：检查 full_results.csv 是否存在。
+# write_markdown_report：是否输出 model_structure_check.md。
+# write_csv_report：是否输出 model_structure_check.csv。
+# 小白提醒：这个检查不会重新跑回归，只是告诉你“哪些模块应该有结果、哪些模块真的有结果”。
+
+
+# =========================
+# 三、假设完整性核对
+# =========================
+
+hypothesis_registry:
+  enabled: true
+  registry_mode: "manual_plus_auto_check"
+  fail_on_unregistered_output: false
+  fail_on_registered_missing_output: false
+
+  expected_hypotheses:
+    - id: "H1"
+      modules:
+        - "main_effect"
+      description: "研发投入金额对总资产收益率存在倒U型影响（合成演示）"
+      required_pass: "weak"
+
+    - id: "M1"
+      modules:
+        - "mediation_effect"
+      description: "研发投入金额通过创新专利影响总资产收益率（合成演示）"
+      required_pass: "none"
+
+    - id: "W1"
+      modules:
+        - "moderation_effect"
+      description: "高管持股正向调节研发投入金额对总资产收益率的正向关系"
+      required_pass: "none"
+
+
+# 中文解释：
+# hypothesis_registry：总假设登记表，用来检查“用户计划检验的假设”和“结果里实际出现的假设”是否一致。
+# registry_mode：登记方式。
+# - manual_plus_auto_check：以 expected_hypotheses 为人工登记清单，同时自动读取各模块 YAML 和输出结果进行对照，推荐。
+# - auto_only：不要求人工登记，只自动汇总各模块中 enabled=true 的假设。
+# - manual_only：只检查 expected_hypotheses 中写出的假设，不自动补充。
+# fail_on_unregistered_output：如果结果中出现未登记假设，是否停止。第一版建议 false，先给提醒。
+# fail_on_registered_missing_output：如果登记了某假设但结果中没出现，是否停止。第一版建议 false，先给提醒。
+# expected_hypotheses：用户认为本轮理论模型应该包含的假设清单。
+# id：假设编号，必须与对应模块 YAML 或结果表中的“假设编号”一致。
+# modules：该假设归属的模块。可选值 main_effect、mediation_effect、moderation_effect。
+# description：假设说明，用于报告，不参与计算。
+# required_pass：只约束 require 表；strong 要求 C 阶段强通过，weak 要求 C 阶段至少弱通过，none 不设通过门槛。
+# 默认均为 none，请按研究需要逐条修改；全部为 none 时，require 不附加假设通过条件。
+# strong / weak 严格综合表仍检查本轮纳入的全部启用假设，none 不会将假设从严格表中排除。
+# 小白提醒：
+# - 如果你新增了论文假设，请先在对应模块 YAML 写清楚，再在这里登记。
+# - 如果这里登记了但结果里没有，通常说明该假设没启用、没跑成功，或编号写错。
+
+
+# =========================
+# 四、理论链条设定
+# =========================
+
+theory_chains:
+  enabled: true
+  require_chain_for_display_case: false
+
+  chains:
+    - chain_id: "CURRENT"
+      enabled: true
+      description: "当前主效应假设的综合查看链条"
+      required_hypotheses:
+        - "H1"
+        - "M1"
+        - "W1"
+      required_modules:
+        - "main_effect"
+        - "mediation_effect"
+        - "moderation_effect"
+      x:
+        - "研发投入金额"
+      y:
+        - "总资产收益率"
+      mediator: 创新专利
+      moderator: 高管持股
+
+
+# 中文解释：
+# theory_chains：理论链条，用来判断多个显著结果是否真的属于同一个理论故事。
+# enabled：是否启用理论链条功能。
+# require_chain_for_display_case：说明性兼容字段；实际案例开关以 display_case_selection.require_theory_chain 和 required_modules_mode 为准。跨模块案例始终要求启用完整理论链。
+# chains：理论链条清单。
+# chain_id：理论链编号，建议使用稳定英文或数字编号，后续 case 会引用它。
+# enabled：该链条是否启用。
+# description：链条说明。
+# required_hypotheses：该链条要求同时覆盖哪些假设。
+# required_modules：该链条要求包含哪些模块。
+# x / y / mediator / moderator：链条涉及的核心变量，用于后续检查和 do-file 注释。
+# 小白提醒：
+# - 如果暂时只做主效应，可以保留 CHAIN_MAIN_CURRENT。
+# - 如果要筛选“主效应+中介+调节都强显著”的案例，需要新建一条 enabled=true 的完整链条。
+# - 不要把互不相关的显著结果硬放进同一条链条。
+
+
+# =========================
+# 五、同一设定的合并键
+# =========================
+
+merge_keys:
+  - "样本区间"
+  - "样本规则"
+  - "样本门槛"
+  - "处理方案"
+  - "是否插值"
+  - "是否缩尾"
+  - "控制变量组合ID"
+  - "纳入的控制变量"
+  - "纳入的可选控制变量"
+  - "固定效应设定"
+  - "聚类标准误设定"
+
+merge_settings:
+  spec_group_id_prefix: "SPEC"
+  normalize_control_variable_text: true
+  missing_key_policy: "warn_and_keep"
+  add_source_module_column: true
+  add_source_file_column: true
+
+# 中文解释：
+# merge_keys：定义什么叫“同一设定”。只有这些字段都一致，三类效应结果才会被放入同一个 spec_group_id。
+# 推荐合并键包括样本区间、样本规则、样本门槛、处理方案、插值、缩尾、控制变量组合、固定效应和聚类标准误。
+# merge_settings：合并时的辅助规则。
+# spec_group_id_prefix：综合设定编号前缀，例如 SPEC_001。
+# normalize_control_variable_text：是否整理控制变量文本，减少空格顺序导致的误判。
+# missing_key_policy：如果某行缺少合并键字段怎么办。
+# - warn_and_keep：保留该行并写 warning，推荐第一版使用。
+# - drop：丢弃缺失关键字段的行。
+# - fail：直接停止。
+# add_source_module_column：是否添加来源模块字段。
+# add_source_file_column：是否添加来源文件字段。
+# 小白提醒：
+# - 合并键不要随便删。删掉固定效应或控制变量字段，会把不同模型口径的结果混在一起。
+# - 样本区间与样本规则已纳入合并键；跨批次比较时仍要核对原始数据版本。
+
+
+# =========================
+# 六、综合结果表规则
+# =========================
+
+pass_tables:
+  source_phase: "C"
+  row_unit: "specification_id"
+  hypothesis_scope: "selected_enabled_registered"
+
+  full:
+    enabled: true
+    include_failed_models: true
+    output_basename: "merged_full_results"
+
+  require:
+    enabled: true
+    output_basename: "merged_require_results"
+
+  strong:
+    enabled: true
+    require_all_hypotheses: true
+    pass_column: "strong_pass"
+    require_success: true
+    require_direction_match: false
+    output_basename: "merged_strong_pass_results"
+
+  weak:
+    enabled: true
+    require_all_hypotheses: true
+    pass_column: "weak_pass"
+    require_success: true
+    require_direction_match: false
+    include_strong_rows: true
+    output_basename: "merged_weak_pass_results"
+
+# 中文解释：
+# pass_tables：四张表均按同一公共设定汇总；通过判定只读取各模块 C 阶段 hypothesis_results，不以 A/B 候选结果替代。
+# source_phase / row_unit：C 阶段假设级判定、每个 specification_id 一行；full 还保留仅执行 A/B 而缺少 C 的设定。
+# hypothesis_scope：只检查本轮选中模块中已启用且登记的假设；未启用的示例不进入严格判定。
+# full：所有已执行设定，包括失败、未通过及缺少 C 结果的设定。
+# require：逐条满足 expected_hypotheses.required_pass；none 不设门槛，缺少必需的 C 判定不能通过 strong 或 weak 要求。
+# strong：同一设定下全部纳入假设都在 C 阶段强通过；缺少任一假设的 C 结果则不入选。
+# weak：同一设定下全部纳入假设都在 C 阶段至少弱通过；强通过也计入。
+# 四表使用相同表头：模型合并ID、specification_id、Strong pass、weak_pass、no&lack_pass、
+# 样本门槛、处理方案、控制变量组合ID、纳入的控制变量、纳入的可选控制变量、
+# 聚类标准误设定、是否成功运行、是否候选模型及各效应精确 model_id 等。
+# 未通过、运行失败、缺少 C 结果须在假设明细中分开显示；空筛选表也保留表头和原因。
+# pass_column / require_success / require_direction_match / include_strong_rows：旧版逐行筛选兼容字段；
+# 改造运行脚本后，strong/weak 应按上述整组规则判定，不能继续只筛选单条通过行。
+# output_basename：输出文件名前缀，程序会生成 .csv 和 .xlsx。
+# 小白提醒：
+# - full 用于完整检查，require 用于自定义门槛，strong/weak 用于严格全假设筛查；均非最终论文结论。
+
+
+# =========================
+# 七、可辩护设定筛选
+# =========================
+
+defensible_specifications:
+  enabled: true
+  include_failed_models: false
+  require_success: true
+  require_minimum_sample_size_from_global: true
+  include_baseline_required_controls: true
+  include_control_combinations: true
+  require_direction_match_for_curve: false
+  require_direction_match_for_summary: false
+  allowed_modules:
+    - "main_effect"
+    - "mediation_effect"
+    - "moderation_effect"
+
+# 中文解释：
+# defensible_specifications：定义哪些结果可以进入设定曲线和稳健性摘要。
+# include_failed_models：失败模型是否进入设定曲线。一般应为 false。
+# require_success：是否只使用成功运行的模型。建议 true。
+# require_minimum_sample_size_from_global：是否使用全局 minimum_sample_size 过滤样本量过小的模型。
+# include_baseline_required_controls：是否纳入只含 required controls 的基础设定。
+# include_control_combinations：是否纳入阶段 C 控制变量组合设定。
+# require_direction_match_for_curve：画图时是否只使用方向符合预期的结果。建议 false，避免只画好看的结果。
+# require_direction_match_for_summary：写摘要时是否只统计方向符合预期的结果。建议 false，同时单独报告方向一致比例。
+# allowed_modules：哪些模块的结果可进入设定曲线。
+# 小白提醒：设定曲线诚实呈现本批次已执行、且符合所设可辩护规则的结果分布；抽样或候选筛查可能未运行全部合理预设。
+
+
+# =========================
+# 八、设定曲线规则
+# =========================
+
+specification_curve:
+  enabled: true
+  curve_level: "hypothesis_effect_term"
+  order_by: "beta"
+  order_direction: "ascending"
+  confidence_interval:
+    enabled: true
+    level: 0.95
+  significance:
+    strong_p_threshold: 0.05
+    weak_p_threshold: 0.10
+  plot:
+    enabled: true
+    file_format: "png"
+    dpi: 300
+    figure_width: 10
+    figure_height: 6
+    show_zero_line: true
+    show_confidence_interval: true
+    language: "zh"
+  output:
+    data_basename: "specification_curve_data"
+    summary_basename: "specification_curve_summary"
+    figures_dir: "figures"
+
+# 中文解释：
+# specification_curve：控制设定曲线数据和图片。
+# curve_level：曲线生成层级。
+# - hypothesis_effect_term：按“假设编号 + 检验项/effect_role”分别画图，推荐。
+# - hypothesis：按假设聚合，适合后续扩展。
+# order_by：曲线排序依据。
+# - beta：按系数排序，最常见。
+# - p：按 p 值排序。
+# - spec_group_id：按设定编号排序。
+# order_direction：ascending 升序，descending 降序。
+# confidence_interval.enabled：是否画置信区间。
+# confidence_interval.level：置信区间水平，0.95 表示 95%。
+# significance：显著性阈值。这里用于可视化标记，不覆盖各模块自己的 strong/weak 规则。
+# plot：图片设置。
+# output：设定曲线数据、摘要和图片目录名称。
+# 小白提醒：
+# - 如果图太多，可以先保持 curve_level 为 hypothesis_effect_term，后续再按需要筛选重点假设。
+# - 设定曲线图由 Python 生成，不需要用户会 Stata 画图。
+
+
+# =========================
+# 九、稳健性陈述
+# =========================
+
+narrative:
+  enabled: true
+  output_file: "robustness_statement.md"
+  language: "zh"
+  tone: "academic_cautious"
+  include:
+    - "total_defensible_specifications"
+    - "success_count"
+    - "strong_pass_share"
+    - "weak_pass_share"
+    - "direction_match_share"
+    - "beta_median"
+    - "beta_iqr"
+    - "p_median"
+    - "cautious_conclusion"
+  conclusion_thresholds:
+    strong_robust_share: 0.70
+    moderate_robust_share: 0.50
+    limited_robust_share: 0.30
+
+# 中文解释：
+# narrative：自动生成规范稳健性陈述。
+# output_file：输出文件名。
+# language：输出语言。第一版建议 zh。
+# tone：陈述语气。academic_cautious 表示学术、谨慎，不使用夸张结论。
+# include：陈述中包含哪些统计信息。
+# conclusion_thresholds：根据 strong_pass_share 给出“较强/一定/有限稳健性”的参考阈值。
+# 小白提醒：
+# - 自动陈述是写作辅助，不是论文最终结论。
+# - 如果理论上必须报告主设定，也应把设定曲线表述为主设定的补充。
+
+
+# =========================
+# 十、可展示案例筛选
+# =========================
+
+display_case_selection:
+  enabled: true
+  required_modules_mode: "enabled_modules"
+  pass_level: "strong"
+  require_same_spec_group: true
+  require_theory_chain: false
+  require_all_registered_hypotheses: false
+  minimum_covered_modules: 1
+  max_cases_per_pass_level: 30
+  case_id_prefix:
+    strong: "CASE_STRONG"
+    weak: "CASE_WEAK"
+  output_csv: "display_case_index.csv"
+  output_json: "display_case_index.json"
+  rejections_csv: "display_case_rejections.csv"
+
+# 中文解释：
+# display_case_selection：筛选后续可用于论文展示、课堂演示或 do-file 生成的案例。
+# required_modules_mode：要求哪些模块通过。
+# - enabled_modules：本轮全局启用了哪些模块，就检查哪些模块。
+# - theory_chain：按 theory_chains 中每条链的 required_modules 检查。
+# - custom：按 display_case_selection.required_modules 手动指定必须通过的模块。
+# pass_level：默认筛选 strong，通过结果更适合展示。
+# require_same_spec_group：保留的配置提示；当前展示案例始终按同一个 spec_group_id 和 specification_id 核验，不允许跨设定拼接。
+# require_theory_chain：单模块案例是否也必须属于启用的理论链条；跨模块案例始终要求理论链。
+# require_all_registered_hypotheses：是否要求覆盖所有登记假设。第一版建议 false，避免过严。
+# minimum_covered_modules：一个案例至少覆盖几个模块。
+# max_cases_per_pass_level：每个通过等级最多输出多少个案例，避免列表过长。
+# case_id_prefix：案例编号前缀。
+# output_csv / output_json：案例索引输出文件。
+# rejections_csv：保存不能作为展示案例的同设定分组及其具体原因。
+# 启用 require_theory_chain 时，只有理论链覆盖所需假设、模块、变量和模型形式才生成案例。
+# 跨模块展示案例始终要求启用完整理论链；未登记理论链时，仅允许单模块案例。
+# full / strong / weak 和设定曲线仅统计已执行设定，不代表全部合理预设。
+# 小白提醒：
+# - 如果你想找“主效应+中介+调节都强显著”的展示案例，请把 required_modules_mode 设为 theory_chain，并启用完整 theory_chain。
+# - case_id 会作为后续生成 Stata do-file 的入口。
+
+
+# =========================
+# 十一、do-file 衔接预留
+# =========================
+
+dofile_bridge:
+  enabled: true
+  generate_dofile_in_this_version: false
+  case_manifest_file: "display_case_manifest.json"
+  case_id_source: "display_case_index"
+  planned_command_style: "case_id"
+  template_dir: "dofile_templates"
+  output_dir: "dofile_cases"
+  include_full_comments: true
+  include_config_snapshot_reference: true
+
+# 中文解释：
+# dofile_bridge：为后续生成 Stata 可用 do-file 预留入口。
+# enabled：是否保留 do-file 衔接信息。
+# generate_dofile_in_this_version：预留字段；当前版本不生成 do-file，设置为 true 也不能启动未实现的生成器。
+# case_manifest_file：结构化案例清单，供后续 do-file 生成器读取；本版不会生成 do-file。
+# case_id_source：后续根据哪个文件中的 case_id 生成 do-file。
+# planned_command_style：计划命令风格。case_id 表示用户用 CASE_STRONG_001 这类编号指定案例。
+# template_dir：后续 do-file 模板目录。
+# output_dir：后续生成 do-file 的输出目录。
+# include_full_comments：生成 do-file 时是否包含完整注释。
+# include_config_snapshot_reference：do-file 注释中是否引用配置快照。
+# 小白提醒：本版输出结构化 display_case_manifest.json，未来 do-file 生成器应使用其中的精确模型、样本、处理和历史快照索引。
+
+
+# =========================
+# 十二、输出设置
+# =========================
+
+output:
+  output_subdir: "result_synthesis"
+  save_csv: true
+  save_excel: true
+  overview_workbook:
+    enabled: true
+    filename: "综合结果总览.xlsx"
+    sheets:
+      - "require"
+      - "full"
+      - "strong"
+      - "weak"
+      - "假设明细"
+      - "字段说明"
+  save_markdown: true
+  save_json: true
+  overwrite_existing: true
+  summary_file: "summary.md"
+
+# 中文解释：
+# output：结果整合模块自己的输出设置。
+# output_subdir：输出子目录名。最终会放在 output/<project.name>/<样本目录>/result_synthesis/。
+# save_csv：是否保存 CSV，建议 true，方便后续程序读取。
+# save_excel：是否保存 Excel，建议 true，方便人工查看。
+# overview_workbook：在现有 result_synthesis 目录顶层输出面向用户的多工作表 Excel；
+# 六张表依次展示自定义筛选、全部设定、严格强通过、严格弱通过、逐假设状态及字段释义。
+# save_markdown：预留的总开关；当前 Markdown 报告由各报告自身开关控制，summary.md 仍会生成。
+# save_json：控制 display_case_index.json；结构化 display_case_manifest.json 由 dofile_bridge.enabled 独立控制。
+# overwrite_existing：是否覆盖已有 result_synthesis 输出。调试阶段可 true，正式运行可改 false。
+# summary_file：综合摘要文件名。
+# 小白提醒：本模块不会覆盖 main_effect、mediation_effect、moderation_effect 文件夹，只写入 result_synthesis 文件夹。
+
+
+# =========================
+# 十三、配置快照
+# =========================
+
+config_snapshot:
+  enabled: true
+  include_global_config: true
+  include_synthesis_config: true
+  include_module_configs: true
+  include_only_existing_files: true
+  snapshot_dir: "config_snapshot"
+
+# 中文解释：
+# config_snapshot：快照内容设置；是否保存还受全局 output_settings.save_config_snapshot 控制。
+# include_global_config：是否复制 analysis_config.yaml。
+# include_synthesis_config：是否复制 synthesis.yaml。
+# include_module_configs：是否复制主效应、中介效应、调节效应 YAML。
+# include_only_existing_files：预留字段；当前只复制已纳入模块的历史快照。启用且请求整合的模块若机器文件缺失，整合会停止。
+# snapshot_dir：配置快照目录名。
+# 小白提醒：正式结果建议一定保存快照，否则以后很难知道当时按什么规则合并的。
+
+
+# =========================
+# 十四、日志与提醒
+# =========================
+
+logging:
+  verbose: true
+  write_warnings_to_summary: true
+  warning_policy: "collect_and_continue"
+
+# 中文解释：
+# logging：当前三项为预留字段，不改变实际停止条件；不能依赖 fail_on_warning 阻止发布。
+# 当前脚本会在命令行显示运行提醒，并将读入和计算提醒写入 summary.md；致命的批次、结构及配置问题始终停止。
+# 如需更严格的输出假设覆盖检查，可使用 hypothesis_registry 下的两个 fail_on_* 开关。
+
+
+# =========================
+# 十五、重要提醒
+# =========================
+
+notes:
+  - "本文件只控制结果整合、设定曲线、可展示案例和 do-file 衔接，不控制原始回归如何估计。"
+  - "数据路径、样本区间、插值、缩尾、控制变量、固定效应和聚类标准误请在 analysis_config.yaml 中修改。"
+  - "主效应、中介效应和调节效应的变量关系与假设方向，请在各自模块 YAML 中修改。"
+  - "merge_keys 定义了同一设定，正式使用前请确认不要误删控制变量、固定效应或聚类标准误字段。"
+  - "设定曲线用于诚实呈现 N 种可辩护设定下的结果分布，不用于挑选最显著结果。"
+  - "display_case_index 中的 case_id 将作为后续生成 Stata do-file 的入口。"
+  - "如果需要主效应、中介效应和调节效应同一设定下均强显著，请启用 theory_chains 中的完整链条并设置 display_case_selection.required_modules_mode 为 theory_chain。"

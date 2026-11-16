@@ -1,0 +1,335 @@
+# =========================
+# mediation.yaml
+# OPC / Auto-STATA 中介效应配置文件
+# =========================
+#
+# 本文件只保存“中介效应模块”自己的设定：
+# - 哪些变量是因变量、自变量和中介变量
+# - 哪些机制路径需要检验
+# - 每条机制路径的方向、筛查方法和通过规则
+# - 中介效应 candidate 与阶段 C 控制变量组合筛查规则
+#
+# 公共设定例如数据路径、样本区间、插值、缩尾、控制变量、固定效应、聚类标准误、
+# 控制变量组合生成方式、输出根目录，请修改 analysis_config.yaml，不要写在本文件中。
+#
+# 当前基准检验模块只做路径回归筛查。Sobel 和 Bootstrap 间接效应确认后续放入稳健性检验
+# 或机制确认模块中单独配置，不在本文件中展开。
+# 完整操作顺序见 ../../全局.md；本文件只决定机制链、所需路径与模块筛查规则。
+# 中介路径可有不同实际估计样本；假设级通过要求同一设定的所需路径全部达标。
+
+config_version: "2.0"
+module_name: "mediation_effect"
+enabled: true
+
+# 中文解释：
+# config_version：模块配置版本，应与全局 YAML 的 config_version 保持一致。
+# module_name：当前模块名称，中介效应固定写 mediation_effect。
+# enabled：是否启用中介效应模块。若全局 run_settings.enabled_modules.mediation_effect 为 false，
+# 即使这里为 true，中介模块也不会运行。
+# 小白提醒：通常只需要修改下面的变量和机制路径，不需要改这里。
+
+
+# =========================
+# 一、变量分组
+# =========================
+
+variables:
+  dependent_variables:
+    innovation_outputs:
+      - "总资产收益率"
+
+
+  independent_variables:
+    network_position:
+      - "研发投入金额"
+
+
+  mediator_variables:
+    environment_and_strategy:
+      - "创新专利"
+
+
+# 中文解释：
+# variables：中介效应模块会用到的变量分组。
+# dependent_variables：被解释变量，也就是论文里的 Y。
+# independent_variables：核心解释变量，也就是论文里的 X。
+# mediator_variables：中介变量、机制变量或渠道变量，也就是论文里的 M。
+# 分组名如 innovation_outputs、network_position、environment_and_strategy 可以自定义；
+# 真正执行哪些路径，以 mechanism_paths 中写明的 x、y、mediators 为准。
+# 小白提醒：变量名必须和数据表列名完全一致，包括中文、大小写和空格。
+
+
+# =========================
+# 二、中介 / 机制路径设定
+# =========================
+
+mechanism_paths:
+  - id: "M1"
+    enabled: true
+    description: "研发投入金额通过创新专利影响总资产收益率（合成演示）"
+    x: "研发投入金额"
+    y: "总资产收益率"
+    mediators:
+      - "创新专利"
+    path_directions:
+      x_to_y: "positive"
+      x_to_m: "positive"
+      m_to_y: "positive"
+      indirect_effect: "positive"
+    screening_method: "three_step"
+    pass_rule: "all_required_paths"
+
+  - id: "M2"
+    enabled: false
+    description: "X通过M影响原Y"
+    x: ""
+    y: ""
+    mediators:
+      - ""
+    path_directions:
+      x_to_y: "positive"
+      x_to_m: "positive"
+      m_to_y: "positive"
+      indirect_effect: "positive"
+    screening_method: "three_step"
+    pass_rule: "all_required_paths"
+
+
+# 中文解释：
+# mechanism_paths：中介/机制路径清单。每一条配置可以包含一个或多个中介变量。
+# id：机制路径编号，例如 M1、M2、M3。
+# enabled：是否启用该机制路径。false 表示保留配置但本次不运行。
+# description：机制路径说明，会进入结果表，方便人工查看。
+# x：核心解释变量。
+# y：被解释变量。
+# mediators：中介变量列表。可以只写一个，也可以写多个。
+# 程序会把多个 mediators 展开为多条独立的 x -> m -> y 机制链。
+# path_directions：理论方向设定。
+# - x_to_y：总效应路径，表示 x 对 y 的预期方向。
+# - x_to_m：第一段机制路径，表示 x 对 m 的预期方向。
+# - m_to_y：第二段机制路径，表示控制 x 后 m 对 y 的预期方向。
+# - indirect_effect：理论间接效应方向。当前基准阶段只记录，不做 Sobel / Bootstrap。
+# 方向可选项：
+# - positive：预期正向，要求 beta > 0。
+# - negative：预期负向，要求 beta < 0。
+# - any：不检查方向，只记录系数方向。
+# screening_method：路径筛查方法。
+# - three_step：三步法，检验 x_to_y、x_to_m、x_m_to_y 三条路径。
+# - two_step：两步法，重点检验 x_to_m、x_m_to_y 两条路径。
+# pass_rule：通过规则。
+# - all_required_paths：所有当前方法要求的路径都要满足显著性和方向。
+# - core_mediation_paths：只要求 x_to_m 与 m_to_y 通过，x_to_y 仅记录。
+# 小白提醒：
+# - 如果同一个 x 和 y 有多个中介变量，可以像 M3 一样写在同一条 mediators 里。
+# - 如果不同中介变量对应不同的 x 或 y，建议像 M1、M2 一样拆成多条机制路径。
+# - 如果暂时不确定某条机制是否要跑，把 enabled 改成 false，不要删除。
+
+
+# =========================
+# 三、路径筛查方法
+# =========================
+
+screening_methods:
+  default_method: "three_step"
+
+  three_step:
+    enabled: true
+    required_paths:
+      - "x_to_y"
+      - "x_to_m"
+      - "x_m_to_y"
+
+  two_step:
+    enabled: true
+    required_paths:
+      - "x_to_m"
+      - "x_m_to_y"
+
+# 中文解释：
+# screening_methods：中介路径筛查方法设置。
+# default_method：当 mechanism_paths 中没有写 screening_method 时，默认使用的方法。
+# three_step：三步法。
+# - x_to_y：先检验 x 是否影响 y。
+# - x_to_m：再检验 x 是否影响 m。
+# - x_m_to_y：最后检验同时放入 x 和 m 时，m 是否影响 y，并记录 x 的变化。
+# two_step：两步法。
+# - 重点检验 x_to_m 与 x_m_to_y。
+# - x_to_y 可作为辅助记录，不作为默认硬性门槛。
+# 小白提醒：
+# - 不懂时建议保持 three_step，它最直观，也便于解释。
+# - 当前基准阶段只做路径回归筛查；Sobel 和 Bootstrap 后续单独做。
+
+
+# =========================
+# 四、中介效应判定规则
+# =========================
+
+mediation_settings:
+  candidate_rules:
+    p_value_threshold: 0.05
+    require_direction_match: true
+    minimum_sample_size_required: true
+    x_weakened_after_m_required: false
+
+    three_step_requirements:
+      require_x_to_y: true
+      require_x_to_m: true
+      require_m_to_y: true
+
+    two_step_requirements:
+      require_x_to_y: false
+      require_x_to_m: true
+      require_m_to_y: true
+
+  combination_screening:
+    enabled: true
+    run_only_for_candidates: true
+    apply_to_paths:
+      - "x_to_m"
+      - "x_m_to_y"
+    keep_all_strong_pass: true
+    keep_all_weak_pass: true
+
+    result_labels:
+      strong_pass: 0.05
+      weak_pass: 0.10
+
+# 中文解释：
+# mediation_settings：中介模块自己的筛选和阶段 C 标记规则。
+# candidate_rules：阶段 A/B 中，什么中介链可以标为候选机制路径。
+# p_value_threshold：候选路径显著性阈值，例如 0.05 表示 p < 0.05。
+# require_direction_match：是否要求路径系数方向符合 path_directions。
+# minimum_sample_size_required：是否要求满足全局 model_settings.minimum_sample_size。
+# x_weakened_after_m_required：加入中介变量 m 后，是否强制要求 x 的系数减弱。
+# - false：只把 x 是否减弱作为辅助标记，适合经济学机制检验和初筛。
+# - true：把 x 是否减弱作为硬性门槛，适合更严格的中介判定。
+# three_step_requirements：三步法下哪些路径必须通过。
+# two_step_requirements：两步法下哪些路径必须通过。
+# combination_screening：阶段 C 控制变量组合筛查规则。
+# enabled：是否进行控制变量组合筛查。
+# run_only_for_candidates：是否只对 candidate 中介链展开阶段 C。
+# apply_to_paths：阶段 C 附加运行哪些路径；当前判定规则要求的路径会自动运行。
+# - x_to_m：检验 x 对 m 的路径。
+# - x_m_to_y：检验控制 x 后 m 对 y 的路径。
+# - x_to_y：总效应路径。三步法要求总效应时，程序会在每个控制变量组合下自动重估。
+# keep_all_strong_pass：是否保留所有 strong_pass 结果。
+# keep_all_weak_pass：是否保留所有 weak_pass 结果。
+# result_labels.strong_pass：强通过阈值。
+# result_labels.weak_pass：弱通过阈值。
+# 小白提醒：
+# - 控制变量池和组合生成方式来自全局 YAML，不在这里填写。
+# - 中介模块默认只对 candidate 机制链做阶段 C；同一组合内的所需路径必须齐全。
+# - 三条路径可以有不同 N 和观测行；hypothesis_results 会记录差异，不据此自动判失败。
+
+
+# =========================
+# 五、统一输出设置
+# =========================
+
+standardized_output:
+  path_level_results: true
+  chain_level_results: true
+  effect_terms_long_format: true
+  keep_wide_raw_results: true
+
+  unified_schema:
+    enabled: true
+    row_granularity: "effect_term"
+    specification_id_fields:
+      - "样本门槛"
+      - "处理方案"
+      - "是否插值"
+      - "是否缩尾"
+      - "控制变量组合ID"
+      - "固定效应设定"
+      - "聚类标准误设定"
+    common_columns:
+      - "model_id"
+      - "specification_id"
+      - "模块名称"
+      - "假设编号"
+      - "假设描述"
+      - "relationship_type"
+      - "effect_type"
+      - "path_type"
+      - "path_id"
+      - "chain_id"
+      - "被解释变量"
+      - "解释变量"
+      - "中介变量"
+      - "调节变量"
+      - "检验项"
+      - "effect_role"
+      - "理论方向"
+      - "direction_match"
+      - "beta"
+      - "se"
+      - "p"
+      - "样本门槛"
+      - "处理方案"
+      - "是否插值"
+      - "是否缩尾"
+      - "控制变量组合ID"
+      - "控制变量组合"
+      - "纳入的控制变量"
+      - "纳入的可选控制变量"
+      - "控制变量数量"
+      - "optional_control_count"
+      - "固定效应设定"
+      - "聚类标准误设定"
+      - "within R²"
+      - "样本量（N）"
+      - "是否候选模型"
+      - "strong_pass"
+      - "weak_pass"
+      - "是否成功运行"
+      - "失败原因"
+      - "global_config_path"
+      - "module_config_path"
+
+  key_effect_roles:
+    - "total_effect_x_to_y"
+    - "first_stage_x_to_m"
+    - "second_stage_m_to_y"
+    - "direct_effect_x_to_y_after_m"
+
+# 中文解释：
+# standardized_output：中介结果的标准化输出规则。
+# path_level_results / chain_level_results：兼容旧配置的说明字段；当前路径结果随普通结果开关保存，机制链判定由 hypothesis_results.csv 固定记录，这两个字段不单独控制机器表。
+# effect_terms_long_format：是否把每个核心效应项按“长表”输出，建议 true。
+# keep_wide_raw_results：是否同时保留旧式宽表，方便人工查看。
+# unified_schema：统一长表字段契约，用于后续合并主效应、中介效应、调节效应结果。
+# enabled：是否启用统一字段输出。
+# row_granularity：统一长表的一行代表什么。
+# - effect_term：一行代表一个被检验的效应项，例如 x_to_m 中的 x、x_m_to_y 中的 m。
+# specification_id_fields：展示公共设定的字段提示；实际 specification_id 由共享程序按数据指纹、完整公共处理参数及模型公共设定计算，不直接按此列表拼接。
+# 这里的设定主要指全局 YAML 中控制的样本门槛、插值、缩尾、控制变量组合、固定效应、聚类标准误等。
+# common_columns：供阅读的字段示例；实际统一表头、顺序和类型以共享 result_schema.py 为准，并包含批次、完整公式、处理及样本溯源列。
+# 主效应、中介效应、调节效应后续都应尽量输出这些字段；某个模块没有的字段可留空。
+# 例如：
+# - 主效应没有“中介变量”，该列留空。
+# - 中介效应没有“调节变量”，该列留空。
+# - 调节效应可在“调节变量”和“交互项检验项”中记录对应内容。
+# key_effect_roles：中介效应可能出现的核心检验项。
+# - total_effect_x_to_y：总效应，x 对 y。
+# - first_stage_x_to_m：第一阶段，x 对 m。
+# - second_stage_m_to_y：第二阶段，控制 x 后 m 对 y。
+# - direct_effect_x_to_y_after_m：加入 m 后 x 对 y 的直接效应。
+# 小白提醒：
+# - 人工查看可以看宽表 full_results.xlsx。
+# - 后续合并不同效应、画设定曲线、比较同一设定下不同效应时，主要使用 standardized_results 长表。
+# - “同一设定”不是指同一个假设，而是指样本门槛、插值、缩尾、控制变量组合、固定效应、聚类标准误等公共设定相同。
+
+
+# =========================
+# 六、重要提醒
+# =========================
+
+notes:
+  - "本文件是中介效应局部配置，只写机制路径、路径方向和中介模块判定规则。"
+  - "数据路径、样本区间、插值、缩尾、控制变量、固定效应、聚类标准误等公共设定请修改 analysis_config.yaml。"
+  - "当前基准中介模块只做三步法/两步法路径回归筛查，不执行 Sobel 和 Bootstrap。"
+  - "Sobel 和 Bootstrap 后续纳入稳健性检验或机制确认模块，使用本模块输出的 candidate 路径作为输入。"
+  - "如果一个 x-y 对应多个中介变量，可以在 mediators 中写多个变量，程序后续会自动展开。"
+  - "如果不同中介变量对应不同 x 或 y，建议拆成多条 mechanism_paths。"
+  - "正式运行前请确认所有变量名与数据列名完全一致。"

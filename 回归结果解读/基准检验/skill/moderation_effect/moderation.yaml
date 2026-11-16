@@ -1,0 +1,221 @@
+# =========================
+# moderation.yaml
+# 调节效应模块配置：每条假设只填写一次变量关系与理论预期
+# =========================
+# 公共的数据、样本、控制变量、固定效应、标准误和输出目录由
+# config/analysis_config.yaml 统一管理。
+# 本文件采用新版假设结构，由 run_moderation_effect.py 读取并校验。
+# 普通用户主要修改第一部分；其余部分已有常用默认值。
+# 完整操作顺序见 ../../全局.md；本文件只设被调节关系与交互筛查规则。
+# strong_pass / weak_pass 是初筛标签，曲线及转折点仍需后续补充确认。
+
+config_version: "2.0"
+module_name: "moderation_effect"
+moderation_schema_version: '3.0'
+enabled: true
+
+# 说明与可选项：
+# config_version 与全局配置保持一致；moderation_schema_version 标记本模块假设结构。
+# enabled 可填 true / false。false 表示本次跳过调节模块，但保留所有假设。
+# 提醒：还需要全局 run_settings.enabled_modules.moderation_effect=true 才会运行。
+
+
+# =========================
+# 一、调节假设：普通用户主要修改这里
+# =========================
+
+moderation_paths:
+  - id: "W1"
+    enabled: true
+    description: "高管持股正向调节研发投入金额对总资产收益率的正向关系"
+    focal_relationship:
+      from: "研发投入金额"
+      to: "总资产收益率"
+      form: "linear"
+    moderator: "高管持股"
+    moderation:
+      form: "linear"
+      expected_change: "positive"
+
+  - id: "W2"
+    enabled: false
+    description: "高管持股负向调节研发投入金额对总资产收益率的正向关系"
+    focal_relationship:
+      from: "研发投入金额"
+      to: "总资产收益率"
+      form: "linear"
+    moderator: "高管持股"
+    moderation:
+      form: "linear"
+      expected_change: "any"
+
+
+# 说明与可选项：
+# 每条 moderation_paths 代表一个独立假设；id 必须唯一。
+# enabled 可填 true / false；false 适合保留暂不检验的例子。
+# focal_relationship.from / to：被调节关系的起点变量 A 和终点变量 B，
+# 写数据中的真实列名。程序结合主效应/中介 YAML 的变量分组推导
+# x_to_y、x_to_m、m_to_y；无法归类时标记 custom，仍按 from→to 回归。
+# focal_relationship.form：A→B 原有关系，可填 linear、u_shape、inverted_u_shape。
+# focal_relationship.direction：仅在 form=linear 且理论要求基本效应方向时填写
+# positive 或 negative；不填默认为 any。曲线关系不要填写此项。
+# conditioning_variables：可选的额外条件变量列表；一般无需填写。若调节
+# 中介后半段且需要控制原始 X，建议在此填写 X，除非 X 已是 moderator。
+# moderator：调节变量 W 的真实列名。它与中介变量不是同一概念；
+# 某个变量在别的假设中充当中介，也可以在本假设中充当调节变量。
+# moderation.form：调节强度随 W 变化的方式，可填 linear 或 quadratic。
+# moderation.expected_change：
+# - A→B 为线性、调节为 linear：positive / negative / any，表示 W 增加时
+#   A 对 B 的斜率如何变化；不是 W 对 B 自身的影响方向。
+# - A→B 为线性、调节为 quadratic：u_shape / inverted_u_shape，表示
+#   “A 对 B 的条件斜率”随 W 呈正 U 型或倒 U 型；需要检验 A×W²。
+# - A→B 为 U 型或倒 U 型、调节为 linear：steepen（变陡）、flatten（变平）、
+#   turning_point_left（转折点左移）、turning_point_right（右移）、any（不预设曲率变化方向）。
+#   统一用 A²×W 的系数 β₅ 做初筛参考；左移/右移另看下方的组合量 D。
+#   turning_point_left/right 即使通过 β₅ 初筛，也不表示移动方向已得到支持。
+# 提醒：β₂ 显著不等于已证明 U 型；β₅ 不显著也不等于 β₅=0。
+# 曲线是否成立、是否翻转以及转折点移动，需结合完整结果另行判断。
+# quadratic 调节线性关系，与 linear 调节 U 型关系是两类不同假设。
+# 当前不支持两者同时为非线性，也不支持“调节之调节”。
+# 新手只需核对变量真实列名、id 不重复，以及 description 与设定一致。
+
+
+# =========================
+# 二、变量构造与中心化
+# =========================
+
+interaction_construction:
+  auto_create_terms: true
+  squared_term_suffix: "_sq"
+  interaction_name_pattern: "{focal}__X__{moderator}"
+  squared_moderator_interaction_name_pattern: "{focal}__X__{moderator}_sq"
+  squared_focal_interaction_name_pattern: "{focal}_sq__X__{moderator}"
+
+centering:
+  enabled: true
+  method: "mean_centering"
+  apply_to:
+    focal_variable: true
+    moderator: true
+    controls: false
+  center_only_continuous_variables: true
+
+# 说明与可选项：
+# auto_create_terms 可填 true / false；建议 true，由程序按假设生成需要的项。
+# 若设为 false，须关闭 centering，并在数据中预先提供按下方命名规则的模型项。
+# 线性调节用 A、W、A×W；quadratic 调节线性关系还需 W²、A×W²；
+# linear 调节曲线关系还需 A²、A²×W。低阶项不能省略。
+# squared_term_suffix 和 *_name_pattern 仅控制生成列名，普通用户不需修改。
+# centering.enabled 可填 true / false；true 表示按样本均值中心化后再平方、交互。
+# apply_to 下各项可填 true / false；分类变量和编号变量不应中心化。
+# center_only_continuous_variables=true 时，以全局连续变量名单为准。
+# 提醒：中心化不改变拟合曲线本身，但会改变一次项系数所对应的参考点；
+# U 型判断要看实际取值范围内的条件效应和转折点。
+
+
+# =========================
+# 三、候选筛查与控制变量组合
+# =========================
+
+moderation_settings:
+  candidate_rules:
+    p_value_threshold: 0.3
+    require_expected_change_match: true
+    minimum_sample_size_required: true
+  combination_screening:
+    enabled: true
+    run_only_for_candidates: true
+    keep_all_strong_pass: true
+    keep_all_weak_pass: false
+    result_labels:
+      strong_pass: 0.01
+      weak_pass: 0.10
+  u_curve_linear_rule: "beta5_only"
+
+# 说明与可选项：
+# candidate_rules.p_value_threshold：A/B 初筛阈值，填 0～1；此处与 C 阶段
+# strong_pass 同为 0.05。A/B 没有入选的组合不会进入 C，可能漏掉加入控制变量后
+# 才显著的结果；若要扩大搜索范围，可调高 A/B 阈值并在结果中注明。
+# require_expected_change_match、minimum_sample_size_required 可填 true / false；
+# 前者检查预期方向，后者检查全局 YAML 规定的最小样本量。
+# combination_screening.enabled、run_only_for_candidates、keep_all_strong_pass、
+# keep_all_weak_pass 可填 true / false。强通过结果全部保留；弱通过默认不保留。
+# strong_pass / weak_pass 是 0～1 的显著性阈值；weak_pass 仅作参考标签，
+# 不改变 strong_pass 的入选规则。控制变量组合由全局 YAML 管理，无需在此重复输入。
+# u_curve_linear_rule 当前预定值为 beta5_only：针对“曲线 A→B + 线性 W”，
+# A/B 用 A²×W 的 β₅ 做候选初筛；C 阶段按 β₅ 显著性和可判定的预期方向标记 strong_pass：
+# - U 型：steepen 对应 β₅>0，flatten 对应 β₅<0；
+#   倒 U 型：steepen 对应 β₅<0，flatten 对应 β₅>0。
+# - any 不限定 β₅ 正负，但仍要求 β₅ 显著。
+# - turning_point_left/right 不可由 β₅ 单独判定左右方向；此时 strong_pass
+#   仅代表曲率交互项通过筛选，不代表预期的转折点移动方向得到证实。
+# 参考量 D=β₂×β₄－β₁×β₅：β₁=A、β₂=A²、β₄=A×W、β₅=A²×W
+# 的系数。另输出 D 的估计值、标准误、p 值及符号；D 不参与 strong_pass。
+# 当条件曲率不为 0 时，D>0 对应 W 上升时转折点左移，D<0 对应右移；
+# 若条件曲率变为 0 或越过 0，单凭 D 的符号不足以概括整段变化。
+# 当前脚本已读取 u_curve_linear_rule，且只支持 beta5_only；D 与曲率跨零信息已作为诊断输出，不参与通过判定。
+# strong_pass 只是筛选参考，不等于完整 U 型或转折点假设得到证明。
+
+
+# =========================
+# 四、可选的条件效应与绘图
+# =========================
+
+conditional_effect_analysis:
+  enabled: false
+  run_only_for_candidates: true
+  moderator_values:
+    - "mean_minus_1sd"
+    - "mean"
+    - "mean_plus_1sd"
+  confidence_level: 0.95
+  check_turning_point_inside_observed_range: true
+  save_effect_table: false
+  save_plot_data: false
+  draw_plot_in_current_module: false
+
+# 说明与可选项：
+# 这部分是进一步解释曲线的可选分析，默认关闭，减少输出表格和绘图文件。
+# enabled、run_only_for_candidates、save_effect_table、save_plot_data、
+# draw_plot_in_current_module 可填 true / false；需要细查时再设为 true。
+# moderator_values 可填 mean_minus_1sd、mean、mean_plus_1sd，代表
+# 调节变量 W 的均值减一个标准差、均值、均值加一个标准差。
+# confidence_level 填 0～1，常用 0.95；check_turning_point_inside_observed_range
+# 可填 true / false，true 表示核对转折点是否位于 A 的实际观察范围。
+# 提醒：关闭本节不代表已证明或排除 U 型；需要时应另看两端斜率、
+# 条件曲率、转折点和曲线图。成功重跑使用临时目录整体替换本模块输出；本次关闭的可选图表不会作为旧文件残留。
+
+
+# =========================
+# 五、统一输出与系数标识
+# =========================
+
+standardized_output:
+  effect_terms_long_format: true
+  keep_wide_raw_results: true
+  save_conditional_effect_results: false
+  full_results_layout: "compact"
+  coefficient_label_style: "term_role_with_name"
+  unified_schema:
+    enabled: true
+    strict_common_columns: true
+    row_granularity: "effect_term"
+    expected_change_last: true
+
+# 说明与可选项：
+# effect_terms_long_format、keep_wide_raw_results、save_conditional_effect_results、
+# unified_schema.enabled 可填 true / false；前两项保留主结果与逐项系数。
+# full_results_layout 预定可填 compact（精简主表）；coefficient_label_style
+# 预定可填 term_role_with_name（同时列明系数角色与实际变量名）。
+# 精简主表应清楚分开：核心检验项的真实名称、beta_核心检验项、
+# se_核心检验项、p_核心检验项；以及 D 的估计值、se_D、p_D。
+# 例如核心项为“结构洞_sq__X__Dynamism”时，beta_核心检验项
+# 指这一个交互项的系数；不能把 β₁、β₂、β₄、β₅ 混写成无标识的 beta。
+# 统一长表的通用 beta / se / p 必须与同一行的“检验项”、
+# “效应角色”和实际变量名一起阅读；一行只对应一个明确检验项。
+# standardized_results 的公共表头、顺序和类型已由共享 result_schema.py 固定；
+# row_granularity=effect_term 表示一行一个检验项。strict_common_columns 与
+# expected_change_last 是兼容／说明字段，不单独改变共享表头；预期方向不等于实证支持。
+# 当前 full_results_layout 仅支持 compact，coefficient_label_style 仅支持
+# term_role_with_name；其他取值会在配置校验时拒绝。
+# 全局样本区间、插值、缩尾等设定仍从 analysis_config.yaml 读取。

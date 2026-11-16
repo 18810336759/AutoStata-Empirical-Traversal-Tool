@@ -1,0 +1,258 @@
+# =========================
+# main_effect_config.yaml
+# OPC / Auto-STATA 主效应配置文件
+# =========================
+#
+# 本文件只保存“主效应模块”自己的设定：
+# - 哪些变量是因变量
+# - 哪些变量是核心解释变量
+# - 哪些主效应假设需要检验
+# - 每条假设的方向、显著性和通过标准
+#
+# 公共设定例如数据路径、样本区间、插值、缩尾、控制变量、固定效应、聚类标准误，
+# 请修改 analysis_config.yaml，不要写在本文件中。
+# 使用顺序、共享预处理和结果表头见 ../../全局.md；本文件只决定主效应假设与筛查规则。
+# strong_pass / weak_pass 属于阶段 C 的假设级筛查标签，不代表严格 U 型确认或因果结论。
+
+config_version: "2.0"
+module_name: "main_effect"
+enabled: true
+
+# 中文解释：
+# config_version：模块配置版本，应与全局 YAML 保持一致。
+# module_name：当前模块名称，主效应固定写 main_effect。
+# enabled：是否启用主效应模块。若全局 enabled_modules.main_effect 为 false，本文件不会运行。
+# 小白提醒：一般只需要改下面的变量和假设，不需要改这里。
+
+
+# =========================
+# 一、变量分组
+# =========================
+
+variables:
+  dependent_variables:
+    innovation_outputs:
+      - "总资产收益率"
+
+
+  independent_variables:
+    network_position:
+      - "研发投入金额"
+
+# 中文解释：
+# variables：主效应模块会用到的变量分组。
+# dependent_variables：被解释变量，也就是论文里的 Y。
+# independent_variables：核心解释变量，也就是论文里的 X。
+# 分组名如 innovation_outputs、network_position 可以自定义，但后面 hypotheses 引用时必须一致。
+# 小白提醒：变量名必须和数据表列名完全一致；分组名是给 YAML 内部引用用的，不需要和数据列名一致。
+
+
+# =========================
+# 二、主效应假设
+# =========================
+
+hypotheses:
+  - id: "H1"
+    enabled: true
+    description: "研发投入金额对总资产收益率存在倒U型影响（合成演示）"
+    y: "总资产收益率"
+    x:
+      - name: "研发投入金额"
+        expected_direction: "any"
+        required: true
+    model_form: "inverted_u_shape"
+    pass_rule: "all_required_terms"
+
+  - id: "H2"
+    enabled: false
+    description: "研发投入金额对总资产收益率存在负向影响"
+    y: "总资产收益率"
+    x:
+      - name: "研发投入金额"
+        expected_direction: "negative"
+        required: true
+    model_form: "u_shape"
+    pass_rule: "all_required_terms"
+
+  - id: "H3"
+    enabled: false
+    description: "研发投入金额对总资产收益率存在U型影响"
+    y: "总资产收益率"
+    x:
+      - name: "研发投入金额"
+        expected_direction: "any"
+        required: true
+    model_form: "l_shape"
+    pass_rule: "all_required_terms"
+
+
+# 中文解释：
+# hypotheses：主效应假设清单，每一条就是论文中的一个主效应关系。
+# id：假设编号，例如 H1、H1a、H2。
+# enabled：是否启用该假设。false 表示保留配置但本次不运行。
+# description：假设说明，会进入结果表，方便人工查看。
+# y：被解释变量。
+# x：核心解释变量，可以写一个，也可以写多个。
+# expected_direction：线性关系的理论方向。
+# - positive：预期正向影响，要求 beta > 0。
+# - negative：预期负向影响，要求 beta < 0。
+# - any：不检查方向，只检查显著性。
+# required：该变量是否为这条假设必须通过的核心项。
+# model_form：模型形式。
+# - linear：线性关系，检验 x。
+# - u_shape：U 型关系，检验 x 和 x²，通常要求 x² 为正。
+# - inverted_u_shape：倒 U 型关系，检验 x 和 x²，通常要求 x² 为负。
+# pass_rule：通过规则。
+# - all_required_terms：所有 required=true 的核心项都要满足显著性和方向。
+# - required_terms_only：只判断 required=true 的变量，其他变量只记录。
+# - any_required_term：至少一个 required=true 的变量通过即可。
+# - shape_rule：按 U 型/倒 U 型规则判断。
+# 小白提醒：
+# - 如果只检验一个 X 对一个 Y，照着 H1a 写最简单。
+# - 如果一个模型里同时放多个 X，就照着 H2 写。
+# - 如果暂时不确定某个假设是否要跑，把 enabled 改成 false，不要删除。
+
+
+# =========================
+# 三、主效应判定规则
+# =========================
+
+main_effect_settings:
+  candidate_rules:
+    p_value_threshold: 0.3
+    require_direction_match: true
+    minimum_sample_size_required: true
+
+  combination_screening:
+    enabled: true
+    run_only_for_candidates: true
+    keep_all_strong_pass: true
+    keep_all_weak_pass: true
+
+    result_labels:
+      strong_pass: 0.01
+      weak_pass: 0.10
+
+# 中文解释：
+# main_effect_settings：主效应模块自己的筛选和标记规则。
+# candidate_rules：阶段 A/B 中，什么结果可以标为候选模型。
+# p_value_threshold：候选模型显著性阈值，例如 0.05 表示 p < 0.05。
+# require_direction_match：是否要求系数方向符合 expected_direction。
+# minimum_sample_size_required：是否要求满足全局 minimum_sample_size。
+# combination_screening：阶段 C 控制变量组合筛查规则。
+# enabled：是否进行控制变量组合筛查。
+# run_only_for_candidates：是否只对候选模型展开阶段 C。
+# keep_all_strong_pass：是否保留所有 strong_pass 结果。
+# keep_all_weak_pass：是否保留所有 weak_pass 结果。
+# result_labels.strong_pass：强通过阈值。
+# result_labels.weak_pass：弱通过阈值。
+# 小白提醒：这里控制“怎么判断结果”，不是控制“跑哪些变量”；跑哪些变量请改 hypotheses。
+
+
+# =========================
+# 四、非线性关系设置
+# =========================
+
+nonlinear_settings:
+  create_squared_terms: true
+  squared_term_suffix: "_sq"
+  center_before_square: false
+  turning_point_check:
+    enabled: false
+    require_turning_point_inside_sample: false
+
+# 中文解释：
+# nonlinear_settings：U 型和倒 U 型关系的公共设置。
+# create_squared_terms：是否由程序自动生成平方项。
+# squared_term_suffix：平方项命名后缀，例如 结构洞_sq。
+# center_before_square：生成平方项前是否先中心化，建议 true，可降低多重共线性。
+# turning_point_check.enabled / require_turning_point_inside_sample：为后续严格曲线检验保留的参数；当前主效应 runner 不用它们决定 candidate 或 strong_pass。
+# 当前 U／倒 U 型仅做平方项及配置必要项的基准筛查；不能仅凭筛查标签认定拐点在观察范围内或曲线整体成立，需后续补充 Utest 等检验。
+# 小白提醒：如果只做普通线性主效应，这一部分不用改。
+
+
+# =========================
+# 五、统一输出设置
+# =========================
+
+standardized_output:
+  effect_terms_long_format: true
+  keep_wide_raw_results: true
+
+  unified_schema:
+    enabled: true
+    row_granularity: "effect_term"
+    specification_id_fields:
+      - "样本门槛"
+      - "处理方案"
+      - "是否插值"
+      - "是否缩尾"
+      - "控制变量组合ID"
+      - "固定效应设定"
+      - "聚类标准误设定"
+    common_columns:
+      - "model_id"
+      - "specification_id"
+      - "模块名称"
+      - "假设编号"
+      - "假设描述"
+      - "relationship_type"
+      - "effect_type"
+      - "path_type"
+      - "path_id"
+      - "chain_id"
+      - "被解释变量"
+      - "解释变量"
+      - "中介变量"
+      - "调节变量"
+      - "检验项"
+      - "effect_role"
+      - "理论方向"
+      - "direction_match"
+      - "beta"
+      - "se"
+      - "p"
+      - "样本门槛"
+      - "处理方案"
+      - "是否插值"
+      - "是否缩尾"
+      - "控制变量组合ID"
+      - "控制变量组合"
+      - "纳入的控制变量"
+      - "纳入的可选控制变量"
+      - "控制变量数量"
+      - "optional_control_count"
+      - "固定效应设定"
+      - "聚类标准误设定"
+      - "within R²"
+      - "样本量（N）"
+      - "是否候选模型"
+      - "strong_pass"
+      - "weak_pass"
+      - "是否成功运行"
+      - "失败原因"
+      - "global_config_path"
+      - "module_config_path"
+
+  key_effect_roles:
+    - "main_linear"
+    - "main_squared"
+
+# 中文解释：
+# standardized_output：主效应结果的标准化输出规则。
+# effect_terms_long_format：是否把每个核心效应项按“长表”输出，建议 true。
+# keep_wide_raw_results：是否同时保留旧式宽表，方便人工查看。
+# unified_schema：统一长表字段契约，用于后续合并主效应、中介效应、调节效应结果。
+# enabled：是否启用统一字段输出。
+# row_granularity：统一长表的一行代表什么。
+# - effect_term：一行代表一个被检验的主效应项，例如结构洞或结构洞_sq。
+# specification_id_fields：展示公共设定的字段提示；实际 specification_id 由共享程序按数据指纹、完整公共处理参数及模型公共设定计算，不直接按此列表拼接。
+# 这里的设定主要指全局 YAML 中控制的样本门槛、插值、缩尾、控制变量组合、固定效应、聚类标准误等。
+# common_columns：供阅读的公共字段示例；实际统一表头、顺序和类型以共享 result_schema.py 为准，并包含运行批次、公式、处理及样本溯源列。
+# 主效应没有“中介变量”和“调节变量”，这些列会留空；这样后续才能和中介、调节结果直接合并。
+# key_effect_roles：主效应可能出现的核心检验项。
+# - main_linear：一次项，例如 结构洞。
+# - main_squared：平方项，例如 结构洞_sq。
+# 小白提醒：
+# - 人工查看可以看宽表 full_results.xlsx。
+# - 后续合并主效应、中介效应、调节效应时，主要使用 standardized_results 长表。
