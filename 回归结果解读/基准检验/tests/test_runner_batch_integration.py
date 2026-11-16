@@ -39,7 +39,7 @@ class RunnerBatchIntegrationTests(unittest.TestCase):
                           "year": np.tile(np.arange(2018, 2022), 20),
                           "x": x, "m": m, "w": w, "y": y,
                           "c": rng.normal(size=80)}).to_csv(root / "data.csv", index=False)
-            global_config = yaml.safe_load((BASE / "config/analysis_config.yaml").read_text())
+            global_config = yaml.safe_load((BASE / "config/analysis_config.yaml").read_text(encoding="utf-8"))
             global_config["project"] = {"name": "smoke", "stage": "test", "description": "test"}
             global_config["run_settings"].update(
                 run_id="smoke", overwrite_existing=True, enabled_modules={name: True for name in
@@ -67,13 +67,13 @@ class RunnerBatchIntegrationTests(unittest.TestCase):
                 "enabled": False, "cluster_level": ""}
             global_config["model_settings"]["minimum_sample_size"] = 10
 
-            main = yaml.safe_load((BASE / "skill/main_effect/main.yaml").read_text())
+            main = yaml.safe_load((BASE / "skill/main_effect/main.yaml").read_text(encoding="utf-8"))
             main["variables"] = {"dependent_variables": {"outcomes": ["y"]},
                                  "independent_variables": {"causes": ["x"]}}
             main["hypotheses"] = [{"id": "H1", "enabled": True, "description": "x to y",
                 "y": "y", "x": [{"name": "x", "expected_direction": "positive", "required": True}],
                 "model_form": "linear", "pass_rule": "all_required_terms"}]
-            mediation = yaml.safe_load((BASE / "skill/mediation_effect/mediation.yaml").read_text())
+            mediation = yaml.safe_load((BASE / "skill/mediation_effect/mediation.yaml").read_text(encoding="utf-8"))
             mediation["variables"] = {"dependent_variables": {"outcomes": ["y"]},
                 "independent_variables": {"causes": ["x"]},
                 "mediator_variables": {"mechanisms": ["m"]}}
@@ -82,13 +82,13 @@ class RunnerBatchIntegrationTests(unittest.TestCase):
                 "path_directions": {"x_to_y": "positive", "x_to_m": "positive",
                                     "m_to_y": "positive", "indirect_effect": "positive"},
                 "screening_method": "three_step", "pass_rule": "all_required_paths"}]
-            moderation = yaml.safe_load((BASE / "skill/moderation_effect/moderation.yaml").read_text())
+            moderation = yaml.safe_load((BASE / "skill/moderation_effect/moderation.yaml").read_text(encoding="utf-8"))
             moderation["moderation_paths"] = [{"id": "W1", "enabled": True,
                 "description": "w moderates x to y", "focal_relationship": {
                     "from": "x", "to": "y", "form": "linear", "direction": "positive"},
                 "moderator": "w", "moderation": {"form": "linear", "expected_change": "positive"}}]
             moderation["conditional_effect_analysis"]["draw_plot_in_current_module"] = False
-            synthesis = yaml.safe_load((BASE / "skill/result_synthesis/synthesis.yaml").read_text())
+            synthesis = yaml.safe_load((BASE / "skill/result_synthesis/synthesis.yaml").read_text(encoding="utf-8"))
             synthesis["input"]["module_selection_mode"] = "enabled_modules"
             synthesis["hypothesis_registry"]["expected_hypotheses"] = [
                 {"id": "H1", "modules": ["main_effect"], "description": "x to y", "required_pass": "none"},
@@ -116,7 +116,7 @@ class RunnerBatchIntegrationTests(unittest.TestCase):
             run_result_synthesis(config_path)
 
             project = root / "output" / "smoke"
-            manifest = json.loads((project / "run_manifest.json").read_text())
+            manifest = json.loads((project / "run_manifest.json").read_text(encoding="utf-8"))
             batch = manifest["batches"][manifest["current_run_id"]]
             self.assertEqual(set(batch["modules"]),
                              {"main_effect", "mediation_effect", "moderation_effect"})
@@ -214,7 +214,7 @@ class RunnerBatchIntegrationTests(unittest.TestCase):
             self.assertFalse((sample / "main_effect" / "standardized_results.csv").exists())
             self.assertFalse((sample / "main_effect" / "specification_index.csv").exists())
             self.assertFalse((sample / "main_effect" / "hypothesis_results.csv").exists())
-            record = json.loads((sample / "main_effect" / "run_record.json").read_text())
+            record = json.loads((sample / "main_effect" / "run_record.json").read_text(encoding="utf-8"))
             self.assertFalse(record["synthesis_ready"])
             with self.assertRaisesRegex(RuntimeError, "机器衔接产物缺失"):
                 prepare_synthesis_inputs(config_path)

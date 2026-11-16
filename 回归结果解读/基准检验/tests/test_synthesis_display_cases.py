@@ -58,7 +58,7 @@ class DisplayCaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             save_display_cases(cases, Path(directory), {**self.config,
                 "dofile_bridge": {"enabled": True, "generate_dofile_in_this_version": False}}, rejected)
-            manifest = json.loads((Path(directory) / "display_case_manifest.json").read_text())
+            manifest = json.loads((Path(directory) / "display_case_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["statistics_scope"], "executed_specifications")
             self.assertEqual(manifest["cases"][0]["selected_models"][0]["model_id"], "m1")
             self.assertFalse(list(Path(directory).glob("*.do")))

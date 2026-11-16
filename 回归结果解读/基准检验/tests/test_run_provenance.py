@@ -118,7 +118,7 @@ class RunProvenanceTests(unittest.TestCase):
         self.assertFalse((output / "figures").exists())
         self.assertEqual(first["run_id"], second["run_id"])
         self.assertNotEqual(first["run_instance_id"], second["run_instance_id"])
-        self.assertEqual(json.loads((output / "run_record.json").read_text())["run_instance_id"],
+        self.assertEqual(json.loads((output / "run_record.json").read_text(encoding="utf-8"))["run_instance_id"],
                          second["run_instance_id"])
 
     def test_new_public_batch_excludes_old_other_module(self):

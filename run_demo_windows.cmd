@@ -2,6 +2,7 @@
 setlocal
 chcp 65001 >nul
 set PYTHONIOENCODING=utf-8
+set PYTHONUTF8=1
 cd /d "%~dp0"
 where py >nul 2>&1
 if errorlevel 1 goto no_python

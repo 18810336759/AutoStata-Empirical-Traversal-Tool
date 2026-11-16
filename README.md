@@ -31,6 +31,7 @@
 ```bat
 chcp 65001
 set PYTHONIOENCODING=utf-8
+set PYTHONUTF8=1
 py -3.11 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 .venv\Scripts\python.exe scripts\run_demo.py

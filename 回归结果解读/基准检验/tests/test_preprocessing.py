@@ -163,7 +163,7 @@ class SharedPreprocessingTests(unittest.TestCase):
         self.assertEqual(len(set(values.values())), 4)
         with tempfile.TemporaryDirectory() as temp:
             save_processing_definitions(pd.DataFrame([info]), Path(temp))
-            artifact = json.loads((Path(temp) / "preprocessing_definitions.json").read_text())
+            artifact = json.loads((Path(temp) / "preprocessing_definitions.json").read_text(encoding="utf-8"))
             self.assertIn(info["processing_definition_id"], artifact["definitions"])
 
     def test_winsor_missing_group_key_keeps_original_value(self):
