@@ -1,15 +1,34 @@
-# Auto-stata：经管实证回归检验演示版
+# auto-stata：面板数据实证回归基准检验工具
 
-项目作者：可健佳。项目获得吉林大学 OPC 课题资助（2026OPC016）。
+面向经管领域的面板数据研究。本项目用 Python 执行预设的回归筛查、整理结果，并为选定设定生成可审阅的 Stata 复现代码；研究者仍需决定研究设计、核查数据并解释结果。初次使用建议先运行纯合成数据演示，不需要安装 Stata。
 
-本项目目前提供基准检验、结果整合和 Stata 复现代码生成。默认一键演示只使用纯合成企业面板；仓库另附项目负责人确认可公开的 `测试数据.dta`，见[数据说明](DATA_NOTICE.md)。演示结果不能直接写入论文。
+## 一、项目已经能做什么
 
-**先看清边界：**示例一键运行会完成主效应、中介效应、调节效应和结果整合，不会启动 Stata。`结果复现` 需要先从综合表选定 `run_id + specification_id`，且当前生成器尚不支持中介模型的 do 复现；请参阅 [复现说明](回归结果解读/结果复现/复现SKILL.md)。
+| 功能 | 当前内容 |
+| --- | --- |
+| 基准检验 | 共享样本门槛、企业内插值、缩尾、控制变量组合和固定效应设定；分别运行线性或 U 型主效应、中介路径、线性或曲线调节的基准筛查。 |
+| 结果整合 | 将同一批次的主效应、中介效应和调节效应按公共设定合并，输出 `full`、`require`、`strong`、`weak` 及假设明细。 |
+| 结果复现 | 对选定的 `run_id + specification_id` 生成精确版与初学者版 Stata do 文件；研究者实际运行 Stata 后，才可收集估计值并制作回归表。当前不支持中介模型的 do 复现。 |
 
-## 第一次试用：Mac
+程序不自动下载或构造研究变量，也不替代因果识别、稳健性及内生性检验。代码采用 [AGPL-3.0](LICENSE)；数据的来源和使用范围另见[数据说明](DATA_NOTICE.md)。
 
-1. 从 [Python 官网](https://www.python.org/downloads/)安装 Python。当前版本在 macOS 的 Python 3.10 环境做过测试；其他 Python 版本和 Windows 仍待首批试用验证。打开“终端”，进入解压后的项目文件夹。没有用过终端的同学可先阅读 [GitHub Desktop 入门](https://docs.github.com/en/desktop/overview/creating-your-first-repository-using-github-desktop)，也可直接下载 ZIP 解压，不必先学 Git。
-2. 在该文件夹中依次输入以下命令，每行结束按回车：
+## 二、第一次安装与运行
+
+**准备：**获取完整项目 ZIP 并解压到普通文件夹，不要只下载 README，也不要在 ZIP 预览窗口内运行。推荐 Python **3.11 64 位**。项目以 Python 3.10–3.13 为兼容性验证目标，实际通过的系统和版本以[自动测试](.github/workflows/tests.yml)为准；不建议直接使用 3.9 或 3.14。无需先学习 Git。
+
+### Windows 10/11
+
+1. 从 [Python 官网](https://www.python.org/downloads/)安装 Python 3.11 64 位版，安装时保留 Python Launcher（`py`）。已经安装 3.10、3.12 或 3.13 的用户，可先试用现有版本。
+2. 打开解压后的项目文件夹，双击 `run_demo_windows.cmd`。它会优先选用已安装的 Python 3.11，找不到时再尝试 3.12、3.13、3.10，创建本项目专用的 `.venv`，安装依赖并运行合成数据演示；**不会改动你的研究数据**。若 `.venv` 已存在，脚本会沿用其中受支持的 Python。
+3. 等待窗口显示 `Done` 和“演示完成”。按窗口给出的路径打开 `result_synthesis/merged_full_results.xlsx`。窗口会停留，便于出现错误时拍照反馈。
+
+若提示找不到 Python，请确认安装了 Python Launcher；若依赖安装失败，先检查网络。不要自行删除已有 `.venv` 或输出目录；先保存错误信息，再按[问题模板](.github/ISSUE_TEMPLATE/bug_report.md)反馈。
+
+### macOS
+
+1. 从 [Python 官网](https://www.python.org/downloads/)安装 Python 3.11。打开“终端”，输入 `cd `（末尾留一个空格），将解压后的项目文件夹拖入终端窗口，再按回车。
+2. 输入 `python3 --version`，确认显示 3.10、3.11、3.12 或 3.13。若 `python3` 指向其他版本，请在下面第一行改用已安装的 `python3.11` 等对应命令。
+3. 逐行执行：
 
    ```bash
    python3 -m venv .venv
@@ -17,33 +36,31 @@
    .venv/bin/python scripts/run_demo.py
    ```
 
-3. 等待显示“演示完成”。按终端显示的路径打开 `result_synthesis/merged_full_results.xlsx`。`full` 展示所有公共设定，`require` 只展示满足登记要求的设定；`strong` 或 `weak` 为空不一定是报错。
+4. 按终端给出的路径打开 `result_synthesis/merged_full_results.xlsx`。
 
-## 第一次试用：Windows 10/11
+演示默认生成固定随机种子的纯合成面板，另附获授权的 `测试数据.dta` **不参与默认演示**。若再次运行时提示输出已存在，这是为避免覆盖旧结果；请先查看已有结果，需要新一轮演示时修改[全局配置](回归结果解读/基准检验/config/analysis_config.yaml)中的 `project.name`。`full` 是全部已执行设定，`require` 是满足用户逐条门槛的设定；`strong`、`weak` 为空不一定是报错。
 
-1. 从 [Python 官网](https://www.python.org/downloads/)安装 **Python 3.11 64 位版**，安装时保留 Python Launcher（`py`）选项。
-2. 将仓库 ZIP **完整解压**到普通文件夹，建议路径不要太长；不要在 ZIP 预览窗口中直接运行文件。
-3. 双击根目录的 `run_demo_windows.cmd`。脚本会创建独立 Python 环境、安装依赖、运行纯合成数据示例，并在结束时停留在结果路径。
-4. 按窗口最后显示的路径，用文件管理器打开 `result_synthesis` 文件夹，再打开 `merged_full_results.xlsx`。若出现错误，保留窗口并按[问题模板](.github/ISSUE_TEMPLATE/bug_report.md)反馈。
+## 三、用自己的数据进行一次检验
 
-不想双击脚本时，可在文件管理器地址栏输入 `cmd` 并回车，依次执行：
+1. **准备数据。**支持 `.dta`、`.csv`、`.xlsx`。先按研究方案完成年份、行业、ST 等筛选，核对企业 ID 与年份唯一、变量名和缺失情况；保留原始文件与筛选记录。不要把未授权研究数据提交到 GitHub。
+2. **改全局设置。**在 [`analysis_config.yaml`](回归结果解读/基准检验/config/analysis_config.yaml)填写 `data.input_file`、面板列、处理方案、控制变量、输出位置和模块开关。`sample_period`、`sample_rules` **只是说明和目录标签，不会自动筛选数据行**。
+3. **改假设与整合设置。**在 [主效应](回归结果解读/基准检验/skill/main_effect/main.yaml)、[中介效应](回归结果解读/基准检验/skill/mediation_effect/mediation.yaml)、[调节效应](回归结果解读/基准检验/skill/moderation_effect/moderation.yaml) YAML 中确认变量关系和方向；需要合并时，在 [synthesis.yaml](回归结果解读/基准检验/skill/result_synthesis/synthesis.yaml)登记本轮假设与通过门槛。
+4. **先校验，再按需运行。**在 macOS 的项目根目录，默认四个模块全开的命令顺序如下；若关闭某个效应，就跳过对应行，并同步核对 synthesis 的假设登记。Windows 请在 `cmd` 中先运行 `chcp 65001` 和 `set PYTHONUTF8=1`，再把每行前面的 `.venv/bin/python` 换成 `.venv\Scripts\python.exe`。不要同时运行同一项目的多个模块。
 
-```bat
-chcp 65001
-set PYTHONIOENCODING=utf-8
-set PYTHONUTF8=1
-py -3.11 -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe scripts\run_demo.py
-```
+   ```bash
+   .venv/bin/python 回归结果解读/基准检验/skill/other/config_validation.py
+   .venv/bin/python 回归结果解读/基准检验/skill/main_effect/run_main_effect.py
+   .venv/bin/python 回归结果解读/基准检验/skill/mediation_effect/run_mediation_effect.py
+   .venv/bin/python 回归结果解读/基准检验/skill/moderation_effect/run_moderation_effect.py
+   .venv/bin/python 回归结果解读/基准检验/skill/result_synthesis/run_result_synthesis.py
+   ```
+5. **读结果与复现。**先看 `result_synthesis/综合结果总览.xlsx` 的 `full`、`require` 和“假设明细”，再按 `specification_id` 查模块明细。需要 Stata 时，按[结果复现说明](回归结果解读/结果复现/复现SKILL.md)选择一条设定生成 do；生成文件本身不会启动 Stata。
 
-无需在 PowerShell 中运行 `Activate.ps1`。若显示找不到 `py`，请确认 Python Launcher 已安装；若依赖安装失败，先检查网络，再把完整错误信息提交 Issue。Windows 的实际验收将由 GitHub Actions 与首批 Windows 试用者完成；当前不能声称已在 Windows 真机验证。**不要上传自己的研究数据**。
+**解释边界：**`candidate`、`strong_pass`、`weak_pass` 是预设条件下的筛查标签，不是因果证明；中介尚无 Bootstrap 间接效应确认，U 型仍需检查拐点和观察范围，模型最终样本也可能不同。论文使用前应核对公式、N、标准误与原始数据，并补充合适的稳健性和内生性检验。更完整的字段、阶段和文件说明见[全局手册](回归结果解读/基准检验/全局.md)。
 
-## 下一步
+## 四、项目与反馈
 
-- 全局设置：[全局说明](回归结果解读/基准检验/全局.md)；假设分别在各模块 YAML 中配置。
-- 默认演示数据来自 [生成脚本](scripts/generate_demo_data.py)，固定随机种子，`ShortName` 为 `DEMO_###`。另附的授权测试数据不参与默认一键演示，详见[数据说明](DATA_NOTICE.md)。
-- 想分析自己的数据，请先确认来源、再分发权限、变量定义、面板唯一性和样本筛选；修改 `analysis_config.yaml` 后再运行相应模块。样本年份和“剔除 ST”等标签**不会自动筛选行**。
-- 运行失败、结果异常或操作卡住，请用 GitHub Issues 对应模板反馈；上传截图前遮住本机路径、账号和数据。
-
-本仓库计划采用 [AGPL-3.0](LICENSE)。未来托管服务、账户和订阅系统不在这个发布副本内；但**仅把代码放在另一个仓库并不能自动规避 AGPL 对公开核心及其修改版的义务**。商业版接入公开核心前应先做架构和法律核查。发布前仍需确认所有代码与演示数据的权属及依赖许可。
+- **作者：**可健佳。**资助：**吉林大学 OPC 课题资助项目（2026OPC016）。
+- **使用问题与建议：**通过 [GitHub Issues](https://github.com/18810336759/auto-stata/issues) 提交；仓库保持 Private 期间，未获邀请者无法访问 Issues。请写明系统、Python 版本、操作步骤与报错，上传截图前遮住个人路径和数据；不要在公开 Issue 中放密钥或真实研究数据。安全问题见 [SECURITY.md](SECURITY.md)。
+- **参考资料：**[基准检验手册](回归结果解读/基准检验/全局.md)、[结果整合说明](回归结果解读/基准检验/skill/result_synthesis/result_synthesis.md)、[结果复现说明](回归结果解读/结果复现/复现SKILL.md)、[Python 文档](https://docs.python.org/3/)、[pandas 文档](https://pandas.pydata.org/docs/)、[statsmodels 文档](https://www.statsmodels.org/stable/)。具体学术文献应由研究者按所用方法和数据另行核对。
+- **发布状态：**当前仍是私有试用仓库；完成权属、数据再分发、联系方式和独立试用验收后再决定是否公开，见[发布检查表](RELEASE_CHECKLIST.md)。
