@@ -25,6 +25,8 @@ MODES = {"both", "exact", "beginner"}
 SUPPLEMENTAL = "定向补充复测"
 EFFECT_TITLES = {"main_effect": "主效应", "mediation_effect": "中介效应",
                  "moderation_effect": "调节效应"}
+MEDIATION_PATHS = {"x_to_y": "总效应 X→Y", "x_to_m": "a 路径 X→M",
+                   "x_m_to_y": "b/c' 路径 X+M→Y"}
 
 
 def require(ok: bool, message: str) -> None:
@@ -121,13 +123,12 @@ def load_context(config_path: Path) -> tuple[dict, dict]:
     contexts = {}
     data_file = None
     for module in ("main_effect", "mediation_effect", "moderation_effect"):
-        if not ids.get(module) and module != "main_effect" and module != "moderation_effect":
+        entry = batch["modules"].get(module, {})
+        if not ids.get(module) and entry.get("status") != "success":
             continue
         module_dir = sample_dir / module
-        if not module_dir.is_dir():
-            continue
+        require(module_dir.is_dir(), f"找不到模块结果: {module}")
         record = json.loads((module_dir / "run_record.json").read_text(encoding="utf-8"))
-        entry = batch["modules"].get(module, {})
         require(entry.get("status") == "success" and record["run_id"] == run_id
                 and record["run_instance_id"] == entry.get("run_instance_id"),
                 f"{module} 不属于目标成功批次")
@@ -166,7 +167,6 @@ def standard_row(context: dict, model_id: str) -> dict:
 def historical_models(context: dict) -> list[dict]:
     out = []
     for module, ids in context["model_ids"].items():
-        require(module != "mediation_effect" or not ids, "第一版暂不支持中介模型，请勿套用主效应模板")
         if not ids:
             continue
         require(module in context["modules"], f"找不到模块结果: {module}")
@@ -180,22 +180,108 @@ def historical_models(context: dict) -> list[dict]:
             model_terms = json.loads(base["模型项定义"])
             processing = json.loads(st["processing_definition_json"])
             require(processing["profile"] == context["row"]["处理方案"], "处理方案不一致")
+            path_type = base.get("path_type", "") if module == "mediation_effect" else ""
+            if module == "mediation_effect":
+                require(path_type in MEDIATION_PATHS and base.get("chain_id"),
+                        f"中介模型缺少可识别的路径或机制链: {model_id}")
+                require(not model_terms.get("generated_terms"), f"暂不支持中介生成项: {model_id}")
+                expected_count = 2 if path_type == "x_m_to_y" else 1
+                require(len(model_terms["focal_terms"]) == expected_count,
+                        f"中介路径核心项与类型不一致: {model_id}")
+            reference = [{"term": r["检验项"], "beta": float(r["beta"]),
+                          "se": float(r["se"]), "p": float(r["p"])}
+                         for r in source["standard"] if r["model_id"] == model_id
+                         and r["检验项"] in model_terms["focal_terms"]]
+            if path_type == "x_m_to_y":
+                x_term = model_terms["focal_terms"][0]
+                if x_term not in {r["term"] for r in reference}:
+                    require(all(st.get(key) not in (None, "") for key in ("beta_x", "se_x", "p_x")),
+                            f"中介 X→M→Y 路径缺少 X 项系数: {model_id}")
+                    reference.append({"term": x_term, "beta": float(st["beta_x"]),
+                                      "se": float(st["se_x"]), "p": float(st["p_x"])})
+            require({r["term"] for r in reference} == set(model_terms["focal_terms"]),
+                    f"历史关键项不完整: {model_id}")
             out.append({"code": base["假设编号"], "module": module, "model_id": model_id,
                         "status": "historical_c", "N": int(base["样本量（N）"]),
                         "sample_identity": base["sample_identity"], "terms": model_terms,
                         "processing": processing, "processing_definition_id": base["processing_definition_id"],
+                        "path_type": path_type, "chain_id": base.get("chain_id", ""),
                         "focal": model_terms["focal_terms"], "controls": model_terms["controls"],
-                        "reference": [{"term": r["检验项"], "beta": float(r["beta"]),
-                                       "se": float(r["se"]), "p": float(r["p"])}
-                                      for r in source["standard"] if r["model_id"] == model_id
-                                      and r["检验项"] in model_terms["focal_terms"]]})
-    require(bool(out), "该设定没有历史 C 阶段模型")
-    require(len({m["code"] for m in out}) == len(out), "首版只支持每个假设一条 C 模型")
+                        "reference": reference})
+    require(len({m["model_id"] for m in out}) == len(out), "C 阶段模型 ID 重复")
+    return out
+
+
+def supplemental_recipe(source: dict, row: dict, core: list[str]) -> dict:
+    recipe = copy.deepcopy(json.loads(row["processing_definition_json"]))
+    require(recipe["threshold"]["core_variables"] == core, "补充复测的核心变量与历史快照不一致")
+    global_cfg = source["global"]
+    candidates = unique(core + names(global_cfg["controls"]["required_controls"])
+                        + names(global_cfg["controls"]["optional_controls"]))
+    continuous = global_cfg["continuous_variable_settings"]
+    allowed = set(names(continuous["continuous_variables"])) - set(names(continuous["exclude_variables"]))
+    recipe["processing_candidates"] = candidates
+    for key, allow_key in (("interpolation", "interpolate_allowed"), ("winsorize", "winsorize_allowed")):
+        block = recipe[key]
+        block["variables"] = ([v for v in candidates if v in allowed and v in set(names(continuous[allow_key]))]
+                              if block["enabled"] else [])
+    return recipe
+
+
+def supplemental_mediation(context: dict, source: dict, code: str, hyp: dict) -> list[dict]:
+    ab = [r for r in source["standard"] if r["假设编号"] == code
+          and r["样本门槛"] == context["row"]["样本门槛"]
+          and r["处理方案"] == context["row"]["处理方案"]
+          and r.get("检验阶段") in ("AB", "A/B初筛")]
+    by_chain: dict[str, dict[str, dict]] = {}
+    for row in ab:
+        path_type, chain_id = row.get("path_type"), row.get("chain_id")
+        if path_type not in MEDIATION_PATHS or not chain_id:
+            continue
+        paths = by_chain.setdefault(chain_id, {})
+        if path_type in paths:
+            require(paths[path_type]["model_id"] == row["model_id"],
+                    f"同一中介链存在多条 A/B {path_type} 模型: {chain_id}")
+        else:
+            paths[path_type] = row
+    mediators = set(names(hyp["mediators"]))
+    require(bool(mediators), f"中介假设未配置机制变量: {code}")
+    found = set()
+    out = []
+    for chain_id, paths in by_chain.items():
+        xm = paths.get("x_to_m")
+        if not xm:
+            continue
+        mediator = json.loads(xm["模型项定义"])["outcome"]
+        if mediator not in mediators:
+            continue
+        found.add(mediator)
+        for path_type in MEDIATION_PATHS:
+            require(path_type in paths, f"补充复测缺少 {code}/{mediator}/{path_type} 的 A/B 定义")
+            row = paths[path_type]
+            terms = json.loads(row["模型项定义"])
+            expected_outcome = mediator if path_type == "x_to_m" else hyp["y"]
+            expected_focal = [hyp["x"]] + ([mediator] if path_type == "x_m_to_y" else [])
+            require(terms["outcome"] == expected_outcome and terms["focal_terms"] == expected_focal,
+                    f"中介 A/B 路径与历史假设不一致: {code}/{mediator}/{path_type}")
+            core = ([hyp["x"], mediator] if path_type == "x_to_m" else
+                    [hyp["x"], hyp["y"]] if path_type == "x_to_y" else
+                    [hyp["x"], mediator, hyp["y"]])
+            out.append({"code": code, "module": "mediation_effect", "model_id": None,
+                        "status": SUPPLEMENTAL, "N": None, "sample_identity": None,
+                        "terms": terms, "processing": supplemental_recipe(source, row, core),
+                        "path_type": path_type, "chain_id": chain_id, "core": core,
+                        "outcome": terms["outcome"], "form": "mediation",
+                        "focal": terms["focal_terms"],
+                        "controls": names(context["row"]["纳入的控制变量"]), "reference": []})
+    require(found == mediators, f"缺少 {code} 的 A/B 机制定义: {sorted(mediators - found)}")
     return out
 
 
 def beginner_models(context: dict, exact: list[dict], selection: Any) -> list[dict]:
-    by_code = {m["code"]: m for m in exact}
+    by_code: dict[tuple[str, str], list[dict]] = {}
+    for model in exact:
+        by_code.setdefault((model["module"], model["code"]), []).append(model)
     enabled: dict[str, tuple[str, dict]] = {}
     for module, source in context["modules"].items():
         cfg = source["module"]
@@ -204,9 +290,9 @@ def beginner_models(context: dict, exact: list[dict], selection: Any) -> list[di
         elif module == "moderation_effect":
             hypotheses = cfg.get("moderation_paths", [])
         else:
-            continue
+            hypotheses = cfg.get("mechanism_paths", [])
         for item in hypotheses:
-            if item.get("enabled", False):
+            if item.get("enabled", module == "mediation_effect"):
                 ident = str(item["id"])
                 require(ident not in enabled, f"假设 ID 重复: {ident}")
                 enabled[ident] = (module, item)
@@ -219,36 +305,33 @@ def beginner_models(context: dict, exact: list[dict], selection: Any) -> list[di
     for code in selected:
         module, hyp = enabled[code]
         source = context["modules"][module]
-        if code in by_code:
-            model = dict(by_code[code])
+        historical = by_code.get((module, code), [])
+        if historical:
+            models = [copy.deepcopy(model) for model in historical]
+        elif module == "mediation_effect":
+            out.extend(supplemental_mediation(context, source, code, hyp))
+            continue
         else:
             core, _, _ = hypothesis_parts(module, hyp)
-            global_cfg = source["global"]
-            optional = names(global_cfg["controls"]["optional_controls"])
-            required = names(global_cfg["controls"]["required_controls"])
-            candidates = unique(core + required + optional)
             ab = [r for r in source["standard"] if r["假设编号"] == code
                   and r["样本门槛"] == context["row"]["样本门槛"]
                   and r["处理方案"] == context["row"]["处理方案"]
                   and r.get("检验阶段") in ("AB", "A/B初筛")]
             require(bool(ab), f"缺少 {code} 的同门槛/处理方案 A/B 预处理定义")
-            recipe = copy.deepcopy(json.loads(ab[0]["processing_definition_json"]))
-            require(recipe["threshold"]["core_variables"] == core, f"{code} 核心变量与历史快照不一致")
-            continuous = global_cfg["continuous_variable_settings"]
-            allowed = set(names(continuous["continuous_variables"])) - set(names(continuous["exclude_variables"]))
-            recipe["processing_candidates"] = candidates
-            for key, allow_key in (("interpolation", "interpolate_allowed"), ("winsorize", "winsorize_allowed")):
-                block = recipe[key]
-                block["variables"] = ([v for v in candidates if v in allowed and v in set(names(continuous[allow_key]))]
-                                      if block["enabled"] else [])
-            model = {"code": code, "module": module, "model_id": None, "status": SUPPLEMENTAL,
-                     "N": None, "sample_identity": None, "terms": {}, "processing": recipe,
-                     "focal": [], "controls": names(context["row"]["纳入的控制变量"]), "reference": []}
-        core, outcome, form = hypothesis_parts(module, hyp)
-        model["core"] = core
-        model["outcome"] = outcome
-        model["form"] = form
-        out.append(model)
+            models = [{"code": code, "module": module, "model_id": None, "status": SUPPLEMENTAL,
+                       "N": None, "sample_identity": None, "terms": {},
+                       "processing": supplemental_recipe(source, ab[0], core),
+                       "path_type": "", "chain_id": "", "focal": [],
+                       "controls": names(context["row"]["纳入的控制变量"]), "reference": []}]
+        for model in models:
+            if module == "mediation_effect":
+                model["core"] = model["processing"]["threshold"]["core_variables"]
+                model["outcome"] = model["terms"]["outcome"]
+                model["form"] = "mediation"
+            else:
+                core, outcome, form = hypothesis_parts(module, hyp)
+                model.update(core=core, outcome=outcome, form=form)
+            out.append(model)
     return out
 
 
@@ -260,6 +343,7 @@ def hypothesis_parts(module: str, hyp: dict) -> tuple[list[str], str, str]:
                      (hyp["model_form"] in ("u_shape", "inverted_u_shape") and len(xs) == 1)),
                 f"暂不支持主效应形式: {hyp['id']}")
         return [hyp["y"], *xs], hyp["y"], hyp["model_form"]
+    require(module == "moderation_effect", f"未知效应模块: {module}")
     rel = hyp["focal_relationship"]
     require(rel["form"] in ("linear", "u_shape", "inverted_u_shape")
             and hyp["moderation"]["form"] == "linear",
@@ -373,6 +457,10 @@ def exact_terms(model: dict) -> tuple[list[str], list[str]]:
 def beginner_terms(model: dict, source_cfg: dict) -> tuple[list[str], list[str]]:
     module = model["module"]
     code = model["code"]
+    if module == "mediation_effect":
+        path_type = model["path_type"]
+        require(path_type in MEDIATION_PATHS, f"未知中介路径: {code}/{path_type}")
+        return [f"* 5. {MEDIATION_PATHS[path_type]}：按该路径自己的门槛、处理和完整案例估计。"], model["terms"]["focal_terms"]
     if module == "main_effect":
         hyp = next(h for h in source_cfg["hypotheses"] if h["id"] == code)
         xs = [item["name"] for item in hyp["x"]]
@@ -398,6 +486,12 @@ def beginner_terms(model: dict, source_cfg: dict) -> tuple[list[str], list[str]]
     return lines, terms
 
 
+def model_label(model: dict) -> str:
+    if model["module"] == "mediation_effect":
+        return f"{model['code']} {MEDIATION_PATHS[model['path_type']]} [{model['model_key']}]"
+    return model["code"]
+
+
 def stata_model(model: dict, input_file: Path, *, exact: bool, module_cfg: dict) -> list[str]:
     recipe = model["processing"]
     terms_info = model["terms"]
@@ -409,8 +503,10 @@ def stata_model(model: dict, input_file: Path, *, exact: bool, module_cfg: dict)
     require(fe["entity"] and fe["time"], "首版只支持双向固定效应")
     needed = unique([outcome] + focal + controls + [fe["entity"], fe["time"]])
     code = model["code"]
-    lines = ["", f"* ===== {code}: {model['status']} =====",
-             f"* 原始输入: {input_file.name}；每条假设独立从同一原始文件开始。"]
+    path_type = model.get("path_type", "")
+    require('"' not in code, f"假设 ID 不能包含引号: {code}")
+    lines = ["", f"* ===== {model_label(model)}: {model['status']} =====",
+             f"* 原始输入: {input_file.name}；每条模型路径独立从同一原始文件开始。"]
     lines += stata_prep(recipe, exact=exact)
     lines += generated
     lines += ["* 6. 完整案例：只留下本条公式中全部变量都非缺失的行。",
@@ -433,7 +529,7 @@ def stata_model(model: dict, input_file: Path, *, exact: bool, module_cfg: dict)
               "* 论文三线表只会从这份实际运行数据生成，不从通过标签填数。"]
     report_terms = unique(focal + controls)
     for term in report_terms:
-        lines.append(f'post __results ("{code}") ("{term}") (_b[{term}]) (_se[{term}]) '
+        lines.append(f'post __results ("{model["model_key"]}") ("{code}") ("{path_type}") ("{term}") (_b[{term}]) (_se[{term}]) '
                      f'(2*ttail(e(df_r), abs(_b[{term}]/_se[{term}]))) (e(N)) (e(r2))')
     lines += [f'display as result "{code}: N=" e(N) " ; R2=" %9.6f e(r2)']
     if exact:
@@ -456,13 +552,14 @@ def build_do(models: list[dict], context: dict, *, exact: bool, output_dir: Path
              f'global REPRO_INPUT "{q(input_file)}"',
              f'global REPRO_OUTPUT "{q(output_dir)}"',
              'capture log close', f'log using "$REPRO_OUTPUT/{mode}.log", text replace',
-             f'postfile __results str16 hypothesis str80 term double beta se p N r2 using "$REPRO_OUTPUT/estimates_{mode}.dta", replace']
+             f'postfile __results str12 model_key str80 hypothesis str16 path_type str128 term double beta se p N r2 using "$REPRO_OUTPUT/estimates_{mode}.dta", replace']
     if not exact:
         lines += ["* winsor2/reghdfe 是外部扩展；缺少时停止，请用户自行确认安装。",
                   "capture which winsor2", 'if _rc {', '    display as error "缺少 winsor2；请先审阅并自行安装。"', '    exit 499', '}',
                   "capture which reghdfe", 'if _rc {', '    display as error "缺少 reghdfe；请先审阅并自行安装。"', '    exit 499', '}']
     for index, model in enumerate(models, 1):
         model["table_index"] = index
+        model["model_key"] = f"m{index}"
         cfg = context["modules"][model["module"]]["module"]
         lines += stata_model(model, input_file, exact=exact, module_cfg=cfg)
     lines += ["", "* 所有模型完成后再导出；出错中断时不能误用半套估计结果。",
@@ -481,7 +578,7 @@ def build_do(models: list[dict], context: dict, *, exact: bool, output_dir: Path
         terms = unique([term for model in selected for term in
                         (model["focal"] if exact else beginner_terms(
                             model, context["modules"][model["module"]]["module"])[1]) + model["controls"]])
-        titles = " ".join(f'"{model["code"]}"' for model in selected)
+        titles = " ".join(f'"{model_label(model)}"' for model in selected)
         lines += [f'    capture noisily esttab {stored} using "$REPRO_OUTPUT/{mode}_{module}.rtf", replace ///',
                   f'        mtitles({titles}) keep({" ".join(terms)}) b(%9.3f) se(%9.3f) ///',
                   '        star(* 0.10 ** 0.05 *** 0.01) stats(N r2, fmt(0 3) labels("N" "R-squared")) ///',
@@ -495,24 +592,28 @@ def build_do(models: list[dict], context: dict, *, exact: bool, output_dir: Path
 
 def generation(config_path: Path) -> Path:
     cfg, ctx = load_context(config_path)
+    mode = cfg["versions"]
     exact = historical_models(ctx)
-    beginner = beginner_models(ctx, exact, cfg["beginner"]["hypotheses"])
+    if mode in ("both", "exact"):
+        require(bool(exact), "该设定没有历史 C 阶段模型；可选择 beginner 做定向补充复测")
+    beginner = (beginner_models(ctx, exact, cfg["beginner"]["hypotheses"])
+                if mode in ("both", "beginner") else [])
     for model in exact:
         validate_recipe(model["processing"], exact=True)
         require(model["terms"].get("cluster") is None, "精确版首批不支持聚类标准误")
     for model in beginner:
         validate_recipe(model["processing"], exact=False)
+        require(model["terms"].get("cluster") is None, "简明版暂不支持聚类标准误")
     out = (ctx["sample_dir"] / cfg["output"]["reproduction_subdir"] /
            ctx["row"]["run_id"] / ctx["row"]["specification_id"])
     require(not out.exists() or bool(cfg["output"]["overwrite_existing"]),
             f"目标目录已存在且 overwrite_existing=false: {out}")
     require(not out.exists() or not any(out.iterdir()), "目标目录已有文件；请换编号或明确处理旧文件")
-    mode = cfg["versions"]
     chosen = ({"exact": exact, "beginner": beginner} if mode == "both" else
               {mode: exact if mode == "exact" else beginner})
     files = {f"{key}.do": build_do(value, ctx, exact=(key == "exact"), output_dir=out)
              for key, value in chosen.items()}
-    plan = {"schema_version": "1.0", "run_id": ctx["row"]["run_id"],
+    plan = {"schema_version": "2.0", "run_id": ctx["row"]["run_id"],
             "specification_id": ctx["row"]["specification_id"],
             "display_id": ctx["row"]["模型合并ID"], "data_file": str(ctx["data_file"]),
             "data_sha256": ctx["row"]["data_sha256"], "sample_dir": str(ctx["sample_dir"]),
@@ -545,6 +646,7 @@ def collect(config_path: Path) -> None:
     plan_path = out / "reproduction_plan.json"
     require(plan_path.is_file(), "请先生成 do 与 reproduction_plan.json")
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    require(plan.get("schema_version") == "2.0", "旧版复现方案不含逐路径模型键；请用新版生成器重新生成 do")
     require(digest(Path(plan["data_file"])) == plan["data_sha256"], "原始数据已变化，停止制表")
     table_dir = Path(plan["paper_table_dir"])
     audit = {"run_id": plan["run_id"], "specification_id": plan["specification_id"],
@@ -564,32 +666,42 @@ def collect(config_path: Path) -> None:
                 f"{mode} 日志缺少完成标记，不能制表")
         rows = read_csv(file)
         models = plan["models"][mode]
-        expected = {(m["code"], t) for m in models for t in unique(
+        expected = {(m["model_key"], t) for m in models for t in unique(
             (m["focal"] if mode == "exact" else beginner_terms(m, yaml.safe_load(
                 (synth.parent / m["module"] / "config_snapshot" / f"{m['module']}.yaml").read_text(encoding="utf-8")))[1]) + m["controls"])}
-        actual = [(r["hypothesis"], r["term"]) for r in rows]
+        model_by_key = {m["model_key"]: m for m in models}
+        actual = [(r["model_key"], r["term"]) for r in rows]
         require(len(actual) == len(set(actual)) and set(actual) == expected,
                 f"{mode} 估计文件缺项、多项或重复，停止制表")
         for r in rows:
-            for key in ("beta", "se", "p", "N", "r2"):
+            model = model_by_key[r["model_key"]]
+            require(r["hypothesis"] == model["code"] and r["path_type"] == model.get("path_type", ""),
+                    f"{mode} 模型键与假设/中介路径不一致: {r['model_key']}")
+            for key in ("beta", "se", "N", "r2"):
                 require(r.get(key) not in ("", None), f"{mode} 缺少估计值: {r['hypothesis']} / {key}")
+            if r.get("p") in ("", None):
+                require(float(r["beta"]) == 0 and float(r["se"]) == 0,
+                        f"{mode} p 值缺失但并非被省略项: {r['hypothesis']} / {r['term']}")
         comparison = []
         if mode == "exact":
-            lookup = {(r["hypothesis"], r["term"]): r for r in rows}
+            lookup = {(r["model_key"], r["term"]): r for r in rows}
             for model in models:
                 for ref in model["reference"]:
-                    got = lookup[(model["code"], ref["term"])]
+                    got = lookup[(model["model_key"], ref["term"])]
                     n_ok = int(float(got["N"])) == model["N"]
                     b_ok = abs(float(got["beta"]) - ref["beta"]) < max(1e-7, abs(ref["beta"]) * 1e-6)
                     se_ok = abs(float(got["se"]) - ref["se"]) < max(1e-7, abs(ref["se"]) * 1e-4)
                     p_ok = abs(float(got["p"]) - ref["p"]) < 1e-4
-                    comparison.append({"假设": model["code"], "检验项": ref["term"],
+                    comparison.append({"模型键": model["model_key"], "假设": model["code"],
+                                       "路径": model.get("path_type", ""), "检验项": ref["term"],
                                        "N一致": n_ok, "系数一致": b_ok, "标准误一致": se_ok, "p值一致": p_ok})
             (out / "comparison_exact.json").write_text(json.dumps(comparison, ensure_ascii=False, indent=2), encoding="utf-8")
-            require(all(all(v for k, v in row.items() if k not in ("假设", "检验项")) for row in comparison),
+            require(all(all(v for k, v in row.items() if k not in ("模型键", "假设", "路径", "检验项")) for row in comparison),
                     "精确版与历史结果不一致；已保存 comparison_exact.json，请先诊断，不生成论文表")
         audit["modes"][mode] = {"status": "verified" if mode == "exact" else "stata_run_review_required",
-                                 "model_status": {m["code"]: m["status"] for m in models},
+                                 "model_status": {m["model_key"]: {"hypothesis": m["code"],
+                                                                "path_type": m.get("path_type", ""),
+                                                                "status": m["status"]} for m in models},
                                  "log_sha256": digest(log), "estimates_sha256": digest(file)}
         if cfg["output"]["paper_tables_after_verification"]:
             table_dir.mkdir(parents=True, exist_ok=True)
@@ -616,14 +728,14 @@ def paper_table(path: Path, plan: dict, mode: str, rows: list[dict[str, str]]) -
             ws.cell(2, 1, "本设定未纳入该类可复现模型；无估计结果。")
             ws.column_dimensions["A"].width = 52
             continue
-        group_rows = [row for row in rows if row["hypothesis"] in {model["code"] for model in models}]
+        group_rows = [row for row in rows if row["model_key"] in {model["model_key"] for model in models}]
         fill_effect_sheet(ws, plan, mode, title, models, group_rows)
     wb.save(path)
 
 
 def fill_effect_sheet(ws: Any, plan: dict, mode: str, title: str,
                       models: list[dict], rows: list[dict[str, str]]) -> None:
-    values = {(r["hypothesis"], r["term"]): r for r in rows}
+    values = {(r["model_key"], r["term"]): r for r in rows}
     terms = unique([r["term"] for r in rows])
     ncol = len(models) + 1
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncol)
@@ -631,13 +743,17 @@ def fill_effect_sheet(ws: Any, plan: dict, mode: str, title: str,
             ("（精确复现）" if mode == "exact" else "（简明复测）"))
     ws.cell(2, 1, "变量 / 模型")
     for col, model in enumerate(models, 2):
-        ws.cell(2, col, f"({col-1}) {model['code']}")
+        ws.cell(2, col, f"({col-1}) {model_label(model)}")
     row_num = 3
     for term in terms:
         ws.cell(row_num, 1, term)
         for col, model in enumerate(models, 2):
-            item = values.get((model["code"], term))
+            item = values.get((model["model_key"], term))
             if item:
+                if item.get("p") in ("", None):
+                    ws.cell(row_num, col, "省略")
+                    ws.cell(row_num + 1, col, "（共线）")
+                    continue
                 beta, p = float(item["beta"]), float(item["p"])
                 stars = "***" if p < .01 else "**" if p < .05 else "*" if p < .1 else ""
                 digits = 6 if beta != 0 and abs(beta) < .0005 else 3
@@ -651,13 +767,15 @@ def fill_effect_sheet(ws: Any, plan: dict, mode: str, title: str,
                           ("历史状态", lambda _: "历史 C" if mode == "exact" else "简明新运行")):
         ws.cell(row_num, 1, label)
         for col, model in enumerate(models, 2):
-            item = next(r for r in rows if r["hypothesis"] == model["code"])
+            item = next(r for r in rows if r["model_key"] == model["model_key"])
             ws.cell(row_num, col, getter(item) if label != "历史状态" else
                     ("历史 C" if model["status"] == "historical_c" else SUPPLEMENTAL))
         row_num += 1
     note = "*** p<0.01, ** p<0.05, * p<0.1; Source(s): Authors' own work"
     if mode == "beginner":
         note += "; ipolate 边界外推、winsor2 分位点及 reghdfe 口径可能不同于 Python。"
+    if title == "中介效应":
+        note += "; 各路径样本可不同；未计算 Bootstrap 间接效应。"
     ws.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=ncol)
     ws.cell(row_num, 1, note)
     thick, thin = Side(style="medium"), Side(style="thin")

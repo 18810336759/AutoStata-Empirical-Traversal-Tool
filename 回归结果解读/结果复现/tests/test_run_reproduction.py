@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,14 +17,55 @@ reproduction = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(reproduction)
 
 
+def mediation_context(*, stage: str = "C") -> dict:
+    paths = {"x_to_y": ("y", ["x"], ["x", "y"], 90),
+             "x_to_m": ("m", ["x"], ["x", "m"], 80),
+             "x_m_to_y": ("y", ["x", "m"], ["x", "m", "y"], 70)}
+    index, standard, ids = [], [], []
+    for path_type, (outcome, focal, core, n) in paths.items():
+        model_id = f"mediation_M1_{path_type}"
+        terms = {"outcome": outcome, "focal_terms": focal, "controls": ["ctrl"],
+                 "fixed_effects": {"entity": "id", "time": "year"},
+                 "cluster": None, "generated_terms": {}}
+        recipe = {"profile": "baseline", "threshold": {"entity": "id", "year": "year",
+                  "core_variables": core, "minimum_distinct_valid_years": 2},
+                  "interpolation": {"enabled": False, "variables": [], "method": "linear",
+                                    "scope": "within_entity", "limit_direction": "both",
+                                    "max_gap_calendar_years": None},
+                  "winsorize": {"enabled": False, "variables": [], "method": "winsorize",
+                                "scope": "full_sample", "quantile_interpolation": "linear"}}
+        common = {"model_id": model_id, "假设编号": "M1", "path_type": path_type,
+                  "chain_id": "M1_x_m_y", "模型项定义": json.dumps(terms),
+                  "processing_definition_json": json.dumps(recipe),
+                  "样本门槛": "2", "处理方案": "baseline", "检验阶段": stage}
+        index.append({**common, "specification_id": "spec_abc", "样本量（N）": str(n),
+                      "sample_identity": f"sample_{path_type}", "processing_definition_id": model_id})
+        standard.append({**common, "检验项": "m" if path_type == "x_m_to_y" else "x",
+                         "beta": "0.2", "se": "0.05", "p": "0.01",
+                         "beta_x": "0.15", "se_x": "0.04", "p_x": "0.02"})
+        ids.append(model_id)
+    source = {"index": index, "standard": standard,
+              "module": {"mechanism_paths": [{"id": "M1", "enabled": True, "x": "x", "y": "y",
+                                              "mediators": ["m"]}]},
+              "global": {"controls": {"required_controls": "ctrl", "optional_controls": ""},
+                         "continuous_variable_settings": {"continuous_variables": "x y m ctrl",
+                          "exclude_variables": "id year", "interpolate_allowed": "x y m ctrl",
+                          "winsorize_allowed": "x y m ctrl"}}}
+    return {"model_ids": {"mediation_effect": ids if stage == "C" else []},
+            "modules": {"mediation_effect": source},
+            "row": {"specification_id": "spec_abc", "样本门槛": "2",
+                    "处理方案": "baseline", "纳入的控制变量": "ctrl", "run_id": "run_1"},
+            "data_file": Path("/tmp/raw.dta")}
+
+
 class ReproductionTests(unittest.TestCase):
     def test_grouped_paper_table_has_three_effect_sheets(self) -> None:
         plan = {"table_title": "回归结果", "models": {"beginner": [
-            {"module": "main_effect", "code": "H1", "status": "historical_c"},
-            {"module": "moderation_effect", "code": "W1", "status": reproduction.SUPPLEMENTAL}]}}
-        rows = [{"hypothesis": code, "term": term, "beta": "0.25", "se": "0.10",
+            {"module": "main_effect", "code": "H1", "model_key": "m1", "status": "historical_c"},
+            {"module": "moderation_effect", "code": "W1", "model_key": "m2", "status": reproduction.SUPPLEMENTAL}]}}
+        rows = [{"hypothesis": code, "model_key": key, "term": term, "beta": "0.25", "se": "0.10",
                  "p": "0.02", "N": "100", "r2": "0.3"}
-                for code, term in (("H1", "x"), ("W1", "xw"))]
+                for code, key, term in (("H1", "m1", "x"), ("W1", "m2", "xw"))]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "effects.xlsx"
             reproduction.paper_table(path, plan, "beginner", rows)
@@ -56,6 +98,68 @@ class ReproductionTests(unittest.TestCase):
         self.assertIn("中介效应：本设定未纳入", do)
         self.assertLess(do.index("postfile __results"), do.index("post __results"))
         self.assertLess(do.index("post __results"), do.index("postclose __results"))
+
+    def test_mediation_paths_keep_separate_models_and_samples(self) -> None:
+        context = mediation_context()
+        exact = reproduction.historical_models(context)
+        self.assertEqual([m["path_type"] for m in exact], ["x_to_y", "x_to_m", "x_m_to_y"])
+        self.assertEqual([m["N"] for m in exact], [90, 80, 70])
+        self.assertEqual([m["processing"]["threshold"]["core_variables"] for m in exact],
+                         [["x", "y"], ["x", "m"], ["x", "m", "y"]])
+        self.assertEqual([len(m["reference"]) for m in exact], [1, 1, 2])
+        self.assertEqual({r["term"]: r["beta"] for r in exact[2]["reference"]},
+                         {"m": 0.2, "x": 0.15})
+        beginner = reproduction.beginner_models(context, exact, "all_enabled")
+        self.assertEqual([m["path_type"] for m in beginner], ["x_to_y", "x_to_m", "x_m_to_y"])
+        do = reproduction.build_do(exact, context, exact=True, output_dir=Path("/tmp/output"))
+        self.assertEqual(do.count('use "$REPRO_INPUT", clear'), 3)
+        for index, (path, n) in enumerate((("x_to_y", 90), ("x_to_m", 80), ("x_m_to_y", 70)), 1):
+            self.assertIn(f"assert _N == {n}", do)
+            self.assertIn(f'post __results ("m{index}") ("M1") ("{path}")', do)
+        self.assertIn('esttab __m1 __m2 __m3 using "$REPRO_OUTPUT/exact_mediation_effect.rtf"', do)
+
+        rows = [{"model_key": model["model_key"], "hypothesis": "M1", "path_type": model["path_type"],
+                 "term": term, "beta": "0.2", "se": "0.05", "p": "0.01",
+                 "N": str(model["N"]), "r2": "0.4"}
+                for model in exact for term in model["focal"]]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mediation.xlsx"
+            reproduction.paper_table(path, {"table_title": "回归结果", "models": {"exact": exact}}, "exact", rows)
+            book = load_workbook(path, read_only=True, data_only=True)
+            try:
+                sheet = book["中介效应"]
+                self.assertIn("总效应", sheet["B2"].value)
+                self.assertIn("X→M", sheet["C2"].value)
+                self.assertIn("X+M→Y", sheet["D2"].value)
+            finally:
+                book.close()
+
+    def test_mediation_without_c_can_make_marked_beginner_supplements(self) -> None:
+        context = mediation_context(stage="AB")
+        self.assertEqual(reproduction.historical_models(context), [])
+        beginner = reproduction.beginner_models(context, [], ["M1"])
+        self.assertEqual(len(beginner), 3)
+        self.assertTrue(all(m["status"] == reproduction.SUPPLEMENTAL for m in beginner))
+        self.assertEqual([m["core"] for m in beginner],
+                         [["x", "y"], ["x", "m"], ["x", "m", "y"]])
+        do = reproduction.build_do(beginner, context, exact=False, output_dir=Path("/tmp/output"))
+        self.assertIn("reghdfe m x ctrl, absorb(id year)", do)
+        self.assertIn("reghdfe y x m ctrl, absorb(id year)", do)
+
+    def test_omitted_control_is_labeled_in_paper_table(self) -> None:
+        plan = {"table_title": "回归结果", "models": {"beginner": [
+            {"module": "main_effect", "code": "H1", "model_key": "m1", "status": "historical_c"}]}}
+        rows = [{"model_key": "m1", "hypothesis": "H1", "term": "ctrl", "beta": "0",
+                 "se": "0", "p": "", "N": "100", "r2": "0.3"}]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "omitted.xlsx"
+            reproduction.paper_table(path, plan, "beginner", rows)
+            book = load_workbook(path, read_only=True, data_only=True)
+            try:
+                self.assertEqual(book["主效应"]["B3"].value, "省略")
+                self.assertEqual(book["主效应"]["B4"].value, "（共线）")
+            finally:
+                book.close()
 
     def test_multiple_linear_main_effect_terms(self) -> None:
         hypothesis = {"id": "H2", "enabled": True, "y": "outcome", "model_form": "linear",
