@@ -59,6 +59,12 @@ def mediation_context(*, stage: str = "C") -> dict:
 
 
 class ReproductionTests(unittest.TestCase):
+    def test_readme_has_no_merge_conflict_markers(self) -> None:
+        readme = (MODULE_PATH.parents[2] / "README.md").read_text(encoding="utf-8")
+        markers = [line for line in readme.splitlines()
+                   if line.startswith(("<<<<<<< ", "=======", ">>>>>>> "))]
+        self.assertFalse(markers, f"README 中残留 Git 合并冲突标记: {markers}")
+
     def test_grouped_paper_table_has_three_effect_sheets(self) -> None:
         plan = {"table_title": "回归结果", "models": {"beginner": [
             {"module": "main_effect", "code": "H1", "model_key": "m1", "status": "historical_c"},

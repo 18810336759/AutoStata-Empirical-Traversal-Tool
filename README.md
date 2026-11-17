@@ -49,23 +49,16 @@ macOS 如 `python3 --version` 不是 3.10–3.13，请在第一行改用已安�
 | Stata 复现 | 从整合表选一条 `run_id + specification_id` | 精确版和初学者版 do；主效应、调节效应与中介的总效应/a/b-c′ 路径可逐模型复跑，实际运行并核验后生成三类回归表 |
 
 工作顺序：准备数据和设定 → 运行各效应模块 → 整合全部设定 → 选定一条设定 → 审阅、运行 Stata do → 核验并制表。演示只跑前面三步；Stata 是可选的后续复现环节。
-功能介绍：不同功能的md为简单的使用说明、yaml为用户需要定制配置的文件、py则为运行程序
+**文件怎么选：**各模块的 `.md` 说明用途和流程，`.yaml` 是用户按研究设计修改的配置，`.py` 是运行入口。第一次使用先读说明，再改配置，最后运行程序。
 
 程序会保存配置快照、模型 ID、处理方案和运行记录。它帮助研究者看见不同合理设定下的结果，而不是自动挑出显著的一行。详细的字段、阶段和输出说明见[基准检验手册](回归结果解读/基准检验/全局.md)。
 
 ## 使用自己的数据
 
-<<<<<<< HEAD
 1. **准备输入。**支持 `.dta`、`.csv`、`.xlsx`。先按研究方案处理年份、行业、ST 等样本筛选，确认企业 ID 与年份组合唯一，核对变量名、缺失值和数据授权。不要把未授权研究数据上传到 GitHub。
 2. **填写本地全局 YAML。**在你下载的项目文件夹中打开 [analysis_config.yaml](回归结果解读/基准检验/config/analysis_config.yaml)，修改 `data.input_file`、面板列、处理方案、控制变量、输出位置与模块开关。`data.input_file` 的相对路径从本地 `回归结果解读/基准检验/` 起算；也可使用你电脑上的绝对路径。`sample_period` 和 `sample_rules` 仅用于说明与目录命名，**不会自动筛选数据行**。
-3. **填写假设。**分别核对[主效应](回归结果解读/基准检验/skill/main_effect/main.yaml)、[中介效应](回归结果解读/基准检验/skill/mediation_effect/mediation.yaml)、[调节效应](回归结果解读/基准检验/skill/moderation_effect/moderation.yaml)配置；需要汇总时，再在 [synthesis.yaml](回归结果解读/基准检验/skill/result_synthesis/synthesis.yaml)登记假设和筛选门槛。
+3. **填写假设。**分别核对[主效应](回归结果解读/基准检验/skill/main_effect/main.yaml)、[中介效应](回归结果解读/基准检验/skill/mediation_effect/mediation.yaml)、[调节效应](回归结果解读/基准检验/skill/moderation_effect/moderation.yaml)配置中的变量位置、关系与假设方向；需要汇总时，再在 [synthesis.yaml](回归结果解读/基准检验/skill/result_synthesis/synthesis.yaml)登记假设和筛选门槛。
 4. **依次运行。**在项目根目录按下方顺序执行；关闭某效应模块时跳过对应行，并同步检查 synthesis 登记。不要同时运行同一项目的多个模块。
-=======
-1. 准备输入。支持 `.dta`、`.csv`、`.xlsx`。先按研究方案处理年份、行业、ST 等样本筛选，确认企业 ID 与年份组合唯一，核对变量名、缺失值和数据授权。不要把未授权研究数据上传到 GitHub。
-2. 填写全局 YAML。在 [analysis_config.yaml](回归结果解读/基准检验/config/analysis_config.yaml)修改 `data.input_file`、面板列、处理方案、控制变量、输出位置与模块开关。`sample_period` 和 `sample_rules` 仅用于说明与目录命名，不会自动筛选数据行。
-3. 填写假设。分别核对[主效应](回归结果解读/基准检验/skill/main_effect/main.yaml)、[中介效应](回归结果解读/基准检验/skill/mediation_effect/mediation.yaml)、[调节效应](回归结果解读/基准检验/skill/moderation_effect/moderation.yaml)配置对应假设的具体内容，请注意核对好变量位置及其关系；需要汇总时，再在 [synthesis.yaml](回归结果解读/基准检验/skill/result_synthesis/synthesis.yaml)登记假设和筛选门槛。
-4. 依次运行。在项目根目录按下方顺序执行；关闭某效应模块时跳过对应行，并同步检查 synthesis 登记。不要同时运行同一项目的多个模块。
->>>>>>> 24afb104eff99fddac85b4bf7814858f4150a72d
 
 ```bash
 .venv/bin/python 回归结果解读/基准检验/skill/other/config_validation.py
