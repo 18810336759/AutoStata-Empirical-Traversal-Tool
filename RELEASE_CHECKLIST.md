@@ -7,7 +7,7 @@
 - [ ] 确认项目代码的作者、合作者授权及第三方依赖许可证兼容性。
 - [ ] 审核 AGPL-3.0 对未来托管服务调用或修改公开核心的影响；必要时咨询法律专业人士。
 - [x] Python 3.11 的 Mac、Windows、Linux CI 已通过；Windows 入口已加入。
-- [ ] 新增 Python 3.10–3.13 跨平台矩阵后，核对全部 CI 任务及 Windows `.cmd` 实际执行结果。
+- [x] Python 3.10–3.13 的 Mac、Windows、Linux 共 12 个 CI 任务通过；Windows 3.11 任务实际执行 `.cmd`。
 - [ ] 在另一台 Mac 和一台 Windows 上按新版 README 独立验收。
 - [ ] 建立维护者私密安全联系渠道，补充到 SECURITY.md。
 - [x] GitHub 新仓库已设 Private，已核对首次提交文件和历史。

@@ -14,7 +14,7 @@
 
 ## 二、第一次安装与运行
 
-**准备：**获取完整项目 ZIP 并解压到普通文件夹，不要只下载 README，也不要在 ZIP 预览窗口内运行。推荐 Python **3.11 64 位**。项目以 Python 3.10–3.13 为兼容性验证目标，实际通过的系统和版本以[自动测试](.github/workflows/tests.yml)为准；不建议直接使用 3.9 或 3.14。无需先学习 Git。
+**准备：**获取完整项目 ZIP 并解压到普通文件夹，不要只下载 README，也不要在 ZIP 预览窗口内运行。推荐 Python **3.11 64 位**；Python 3.10–3.13 已在 Windows、macOS、Linux 的[自动测试](.github/workflows/tests.yml)中通过。其他硬件与系统版本仍需试用验证，不建议直接使用 Python 3.9 或 3.14。无需先学习 Git。
 
 ### Windows 10/11
 
