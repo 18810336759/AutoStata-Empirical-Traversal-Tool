@@ -61,6 +61,6 @@
 ## 四、项目与反馈
 
 - **作者：**可健佳。**资助：**吉林大学 OPC 课题资助项目（2026OPC016）。
-- **使用问题与建议：**通过 [GitHub Issues](https://github.com/18810336759/auto-stata/issues) 提交；仓库保持 Private 期间，未获邀请者无法访问 Issues。请写明系统、Python 版本、操作步骤与报错，上传截图前遮住个人路径和数据；不要在公开 Issue 中放密钥或真实研究数据。安全问题见 [SECURITY.md](SECURITY.md)。
+- **使用问题与建议：**通过 [GitHub Issues](https://github.com/18810336759/AutoStata-Empirical-Traversal-Tool/issues) 提交；仓库保持 Private 期间，未获邀请者无法访问 Issues。请写明系统、Python 版本、操作步骤与报错，上传截图前遮住个人路径和数据；不要在公开 Issue 中放密钥或真实研究数据。安全问题见 [SECURITY.md](SECURITY.md)。
 - **参考资料：**[基准检验手册](回归结果解读/基准检验/全局.md)、[结果整合说明](回归结果解读/基准检验/skill/result_synthesis/result_synthesis.md)、[结果复现说明](回归结果解读/结果复现/复现SKILL.md)、[Python 文档](https://docs.python.org/3/)、[pandas 文档](https://pandas.pydata.org/docs/)、[statsmodels 文档](https://www.statsmodels.org/stable/)。具体学术文献应由研究者按所用方法和数据另行核对。
 - **发布状态：**当前仍是私有试用仓库；完成权属、数据再分发、联系方式和独立试用验收后再决定是否公开，见[发布检查表](RELEASE_CHECKLIST.md)。
