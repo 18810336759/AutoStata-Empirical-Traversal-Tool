@@ -4,6 +4,9 @@
 # =========================
 #
 # 本文件只保存“所有效应模块共同使用”的公共规则。
+# 这是下载/克隆到用户电脑后的本地文件；可用 VS Code 或普通文本编辑器修改。
+# VS Code 只是编辑器，不会替用户上传配置或数据。运行脚本和默认输出都在本机。
+# 不要在 GitHub 网页填写真实研究数据或个人路径；主动提交并推送会把文件送入仓库。
 # 主效应、中介效应、调节效应的具体变量关系和假设，后续应分别放入各自模块 YAML。
 # 结果整合、设定曲线、可展示案例和 do-file 衔接规则，放入 result_synthesis 模块 YAML。
 #
@@ -333,7 +336,8 @@ output_settings:
 
 # 中文解释：
 # output_settings：结果输出设置。
-# output_root：输出总目录。实际结果按 output_root/project.name/样本说明/模块 排列。
+# output_root：输出总目录。相对路径以本机的 回归结果解读/基准检验 目录为起点；默认写入该目录下的 output/。
+# 实际结果按 output_root/project.name/样本说明/模块 排列，不会自动上传到 GitHub。
 # save_raw_results：是否保存全部结果，包括失败模型。
 # save_success_results：是否保存成功运行结果。
 # save_summary_md：是否输出 summary.md 摘要文件。
