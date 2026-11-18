@@ -28,7 +28,7 @@ flowchart TD
     F --> G
 ```
 
-1. **下载项目。** 在仓库页面点 **Code → Download ZIP**，解压后进入含 `README.md` 和 `requirements.txt` 的项目文件夹。也可以用 GitHub Desktop 克隆。仓库目前若仍为 Private，只有受邀请且已登录的账号能打开；朋友看到 404 时先检查访问权限。下载 ZIP 只是复制一份到电脑，修改本地文件不会自动传回 GitHub。[GitHub 下载说明](https://docs.github.com/en/repositories/working-with-files/using-files/downloading-files-from-github)
+1. **下载项目。** 在仓库页面点 **Code → Download ZIP**，解压后进入含 `README.md` 和 `requirements.txt` 的项目文件夹。也可以用 GitHub Desktop 克隆。下载 ZIP 只是复制一份到电脑，修改本地文件不会自动传回 GitHub。[GitHub 下载说明](https://docs.github.com/en/repositories/working-with-files/using-files/downloading-files-from-github)
 2. **安装 Python。** 新用户建议安装 [Python 3.13.17 官方安装包](https://www.python.org/downloads/release/python-31317/)：Windows 选择 **Windows installer (64-bit)**，保留 Python Launcher；macOS 选择 **macOS installer**。项目已测试 Python 3.10–3.13，已有这些版本可以先用，不必为演示重复安装。Windows 在命令提示符输入 `py -3.13 --version`、macOS 在终端输入 `python3.13 --version`，能显示版本号才进入下一步。
 3. **选编辑器，可跳过。** 推荐 [VS Code](https://code.visualstudio.com/download) 来打开整个项目文件夹、编辑 YAML 和查看结果，但它**不是必装软件**。Windows 可用系统“记事本”；macOS 可用“文本编辑”，先切换为纯文本并保留 `.yaml` 扩展名。不要用 Word 编辑配置文件。
 4. **运行演示。** 首次安装依赖需要联网，运行完成后查看终端提示的输出目录。后续可直接配置在本地无需联网使用
