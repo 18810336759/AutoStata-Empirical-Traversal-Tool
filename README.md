@@ -2,23 +2,20 @@
 
 **面板数据实证回归基准检验工具**
 
-auto-stata 是在自己电脑上运行的 Python 项目：研究者用 YAML 写明数据、变量与假设，程序批量完成基准检验、整理候选设定，并生成供 Stata 核验的 do 文件。它适合想系统尝试面板回归、但不想从零编写整套脚本的商科同学。**它不是网页服务，也不会在下载后自动替你判断论文假设成立。**
-
+auto-stata 是在自己电脑上运行的 Python 项目：研究者用 YAML 写明数据、变量与假设，程序批量完成基准检验、整理候选设定，并生成供 Stata 核验的 do 文件。它适合想系统尝试面板回归、但不想从零编写整套脚本的商科同学。
 ## 项目简介
 
 | 目前能做什么 | 你会得到什么 |
 | --- | --- |
-| 主效应：线性、U 型和倒 U 型初筛 | 各假设的模型结果与通过标签 |
-| 中介效应：路径回归初筛 | 路径结果与待进一步确认的候选关系 |
-| 调节效应：交互项及相关形式初筛 | 调节假设的模型结果 |
+| 主效应：线性、U 型和倒 U 型初筛 |  `full`、`strong`、`weak` 等结果表 |
+| 中介效应：两步法或三步法 |  `full`、`strong`、`weak` 等结果表 |
+| 调节效应：线性、U 型和倒 U 型初筛 |   `full`、`strong`、`weak` 等结果表|
 | 结果整合：按共同设定和假设门槛筛选 | `full`、`require`、`strong`、`weak` 等工作表 |
 | 结果复现：选一条设定生成 do 文件 | 精确版、初学者简明版；执行并收集后可整理论文表 |
 
 第一次使用建议先跑**合成演示数据**，确认环境能工作，再换成自己的数据。仓库另含获授权的测试数据，使用范围见[数据说明](DATA_NOTICE.md)。演示不需要 Stata；真正执行复现 do 文件需要另行安装有使用权的 Stata。
 
 ## 安装与使用：30 秒看懂路线
-
-“30 秒”是看懂路线，下载和安装的实际时间取决于网络与电脑。
 
 ```mermaid
 flowchart TD
@@ -34,7 +31,7 @@ flowchart TD
 1. **下载项目。** 在仓库页面点 **Code → Download ZIP**，解压后进入含 `README.md` 和 `requirements.txt` 的项目文件夹。也可以用 GitHub Desktop 克隆。仓库目前若仍为 Private，只有受邀请且已登录的账号能打开；朋友看到 404 时先检查访问权限。下载 ZIP 只是复制一份到电脑，修改本地文件不会自动传回 GitHub。[GitHub 下载说明](https://docs.github.com/en/repositories/working-with-files/using-files/downloading-files-from-github)
 2. **安装 Python。** 新用户建议安装 [Python 3.13.17 官方安装包](https://www.python.org/downloads/release/python-31317/)：Windows 选择 **Windows installer (64-bit)**，保留 Python Launcher；macOS 选择 **macOS installer**。项目已测试 Python 3.10–3.13，已有这些版本可以先用，不必为演示重复安装。Windows 在命令提示符输入 `py -3.13 --version`、macOS 在终端输入 `python3.13 --version`，能显示版本号才进入下一步。
 3. **选编辑器，可跳过。** 推荐 [VS Code](https://code.visualstudio.com/download) 来打开整个项目文件夹、编辑 YAML 和查看结果，但它**不是必装软件**。Windows 可用系统“记事本”；macOS 可用“文本编辑”，先切换为纯文本并保留 `.yaml` 扩展名。不要用 Word 编辑配置文件。
-4. **运行演示。** 首次安装依赖需要联网，运行完成后查看终端提示的输出目录。演示数据是合成的，不需要放入自己的研究数据。
+4. **运行演示。** 首次安装依赖需要联网，运行完成后查看终端提示的输出目录。后续可直接配置在本地无需联网使用
 
 **Windows 10/11：** 在解压后的项目文件夹中双击 `run_demo_windows.cmd`。如果窗口报 Python 未找到，先重开命令提示符检查 `py -3.13 --version`；如果已有其他受支持版本，脚本也会尝试使用。Windows 对未知下载脚本可能弹出安全提示，请先确认来源并查看脚本内容，不要绕过学校或电脑的安全规定。
 
@@ -67,7 +64,7 @@ python3.13 -m venv .venv
 | `回归结果解读/结果复现/reproduction.yaml` | 指定一条结果设定，生成 do 文件 |
 | `回归结果解读/基准检验/output/`、`回归结果输出/` | 回归、整合、复现与论文表输出 |
 
-文件类型也有分工：`.md` 是人看的说明；`.yaml` 是需要按研究方案修改的配置；`.py` 是运行程序；`.do` 是交给 Stata 执行的命令；`.xlsx` 是结果表。通常先改 YAML，再运行相应 Python，不必修改 Python 源码。
+文件类型也有分工：`.md` 是使用说明；`.yaml` 是需要按研究方案修改的配置；`.py` 是运行程序；`.do` 是交给 Stata 执行的命令；`.xlsx` 是结果表。通常先改 YAML，再运行相应 Python，不必修改 Python 源码。
 
 ```mermaid
 flowchart TD
@@ -112,6 +109,7 @@ macOS:   .venv/bin/python "回归结果解读/基准检验/skill/result_synthesi
 ```
 
 输出在当前项目、样本目录下的 `result_synthesis/`。从 `综合结果总览.xlsx` 或 `merged_full_results.xlsx` 查看设定，不要只看“通过”字样。
+
 6. **选择一条设定生成复现文件。** 在 [reproduction.yaml](回归结果解读/结果复现/reproduction.yaml) 把 `source.synthesis_file` 指向本轮 `result_synthesis/merged_full_results.xlsx`；从同一行复制 `run_id` 和 `specification_id` 到 `selection`。运行 `run_reproduction.py`。它只生成 `exact.do` 和/或 `beginner.do`，**不会替你运行 Stata**。
 7. **执行并核对。** 先检查生成的 do 文件中的路径、样本与变量，再用有使用权的 [Stata](https://www.stata.com/install-guide/) 执行**整份** do 文件。简明版还需安装 `winsor2`、`reghdfe` 等 Stata 扩展；`esttab` 可选，用于 RTF 表。精确版与简明版处理口径不完全相同，不要把两版结果混成同一张历史复现表。
 8. **收集实际估计结果。** Stata 完成后，在项目根目录运行下方收集命令，核对日志、系数和表格，再判断能否用于论文；未执行 do 文件不能凭筛选标签生成真实论文回归表。
@@ -140,8 +138,7 @@ macOS:   .venv/bin/python "回归结果解读/结果复现/run_reproduction.py" 
 - 当前针对 **U 型/倒 U 型** 的判定只用于初筛。研究者仍需检查拐点是否在实际观测区间内，并结合斜率、合适的专门检验与理论解释，不能仅凭标签断言 U 型成立。
 - 中介模块提供路径回归的候选证据，**尚不等于 Bootstrap 间接效应确认**；对识别假设、置信区间和因果解释仍需独立核查。
 - 生成的 do 文件必须人工检查数据路径、样本筛选、变量定义、预处理、固定效应、聚类标准误和实际运行日志。简明版使用常见 Stata 命令帮助学习，可能与 Python 精确口径有数值差异。
-- 当前不自动下载研究变量，也不代替变量构造、稳健性检验、内生性处理或论文写作。后续计划逐步补齐数据下载与变量构造、Bootstrap 间接效应确认、稳健性/内生性模块，并最终探索**零代码网页端**，让使用流程更简单；这些功能目前尚未上线，也不承诺具体上线时间。
-
+- 当前不自动下载研究变量，也不代替变量构造、稳健性检验、内生性处理或论文写作。后续计划逐步补齐数据下载与变量构造、Bootstrap 间接效应确认、稳健性/内生性模块，并最终探索**零代码网页端**，让使用流程更简单；
 ## 反馈与项目
 
 欢迎按文档独立试用合成演示，并通过仓库 [Issues](https://github.com/18810336759/AutoStata-Empirical-Traversal-Tool/issues) 反馈操作步骤、报错截图和预期结果；请先删除截图或日志中的真实数据、个人路径与密钥。若仓库仍为 Private，只有获授权账号可提交 Issue；无法访问时请联系仓库维护者。安全问题请先看 [SECURITY.md](SECURITY.md)，贡献方式见 [CONTRIBUTING.md](CONTRIBUTING.md)。
