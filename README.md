@@ -1,105 +1,149 @@
 # auto-stata
 
-### 面板数据实证回归基准检验工具
+**面板数据实证回归基准检验工具**
 
-主要面向经管专业学生的本地开源工具：用 YAML 写清研究设定，运行主效应、中介路径和调节效应的基准筛查，汇总同一设定下的结果，并为选定模型生成可审阅的 Stata 复现代码。
+auto-stata 是在自己电脑上运行的 Python 项目：研究者用 YAML 写明数据、变量与假设，程序批量完成基准检验、整理候选设定，并生成供 Stata 核验的 do 文件。它适合想系统尝试面板回归、但不想从零编写整套脚本的商科同学。**它不是网页服务，也不会在下载后自动替你判断论文假设成立。**
 
-> 当前版本是本地 Python + YAML 工作流，不是零代码网页端。程序负责执行和留痕，研究者负责数据、理论、模型选择及论文解释。项目研究理念来自“智证”课题，但本仓库只介绍已经开放的功能。
+## 项目简介
 
-[快速开始](#快速开始) · [配置保存在哪里](#配置保存在哪里) · [已有功能](#已有功能) · [使用自己的数据](#使用自己的数据) · [结果怎么读](#结果怎么读) · [边界与路线图](#边界与路线图) · [反馈与项目](#反馈与项目)
+| 目前能做什么 | 你会得到什么 |
+| --- | --- |
+| 主效应：线性、U 型和倒 U 型初筛 | 各假设的模型结果与通过标签 |
+| 中介效应：路径回归初筛 | 路径结果与待进一步确认的候选关系 |
+| 调节效应：交互项及相关形式初筛 | 调节假设的模型结果 |
+| 结果整合：按共同设定和假设门槛筛选 | `full`、`require`、`strong`、`weak` 等工作表 |
+| 结果复现：选一条设定生成 do 文件 | 精确版、初学者简明版；执行并收集后可整理论文表 |
 
-## 快速开始
+第一次使用建议先跑**合成演示数据**，确认环境能工作，再换成自己的数据。仓库另含获授权的测试数据，使用范围见[数据说明](DATA_NOTICE.md)。演示不需要 Stata；真正执行复现 do 文件需要另行安装有使用权的 Stata。
 
-下载仓库的**完整 ZIP**，解压后打开项目文件夹。推荐 Python **3.11（64 位）**；3.10–3.13 已在 Windows、macOS、Linux 的 [CI 测试配置](.github/workflows/tests.yml)中覆盖。演示使用固定随机种子的纯合成数据，不读取你的研究文件。
+## 安装与使用：30 秒看懂路线
 
-| 你的电脑 | 第一步 | 运行演示 |
-| --- | --- | --- |
-| Windows 10/11 | 从 [Python 官网](https://www.python.org/downloads/)安装 Python 3.11，保留 Python Launcher（`py`）；解压完整 ZIP | 双击项目根目录的 `run_demo_windows.cmd`，等待窗口显示 `Done` 和“演示完成” |
-| macOS | 从 [Python 官网](https://www.python.org/downloads/)安装 Python 3.11；打开“终端”，输入 `cd `，把项目文件夹拖入终端并回车 | 依次执行下方三行命令 |
+“30 秒”是看懂路线，下载和安装的实际时间取决于网络与电脑。
+
+```mermaid
+flowchart TD
+    A[打开已获授权的 GitHub 仓库] --> B[下载 ZIP 并解压到本机]
+    B --> C[安装 Python 3.13]
+    C --> D{电脑系统}
+    D -->|Windows| E[运行 run_demo_windows.cmd]
+    D -->|macOS| F[在终端运行演示命令]
+    E --> G[打开本机生成的综合结果 Excel]
+    F --> G
+```
+
+1. **下载项目。** 在仓库页面点 **Code → Download ZIP**，解压后进入含 `README.md` 和 `requirements.txt` 的项目文件夹。也可以用 GitHub Desktop 克隆。仓库目前若仍为 Private，只有受邀请且已登录的账号能打开；朋友看到 404 时先检查访问权限。下载 ZIP 只是复制一份到电脑，修改本地文件不会自动传回 GitHub。[GitHub 下载说明](https://docs.github.com/en/repositories/working-with-files/using-files/downloading-files-from-github)
+2. **安装 Python。** 新用户建议安装 [Python 3.13.17 官方安装包](https://www.python.org/downloads/release/python-31317/)：Windows 选择 **Windows installer (64-bit)**，保留 Python Launcher；macOS 选择 **macOS installer**。项目已测试 Python 3.10–3.13，已有这些版本可以先用，不必为演示重复安装。Windows 在命令提示符输入 `py -3.13 --version`、macOS 在终端输入 `python3.13 --version`，能显示版本号才进入下一步。
+3. **选编辑器，可跳过。** 推荐 [VS Code](https://code.visualstudio.com/download) 来打开整个项目文件夹、编辑 YAML 和查看结果，但它**不是必装软件**。Windows 可用系统“记事本”；macOS 可用“文本编辑”，先切换为纯文本并保留 `.yaml` 扩展名。不要用 Word 编辑配置文件。
+4. **运行演示。** 首次安装依赖需要联网，运行完成后查看终端提示的输出目录。演示数据是合成的，不需要放入自己的研究数据。
+
+**Windows 10/11：** 在解压后的项目文件夹中双击 `run_demo_windows.cmd`。如果窗口报 Python 未找到，先重开命令提示符检查 `py -3.13 --version`；如果已有其他受支持版本，脚本也会尝试使用。Windows 对未知下载脚本可能弹出安全提示，请先确认来源并查看脚本内容，不要绕过学校或电脑的安全规定。
+
+**macOS：** 打开“终端”，输入 `cd `（后面有一个空格），把项目文件夹从 Finder 拖入终端，再按回车。随后逐行执行：
 
 ```bash
-python3 -m venv .venv
+python3.13 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python scripts/run_demo.py
 ```
 
-macOS 如 `python3 --version` 不是 3.10–3.13，请在第一行改用已安装的 `python3.11` 等命令。Windows 脚本会优先选 3.11，再尝试 3.12、3.13、3.10；它会创建项目专用 `.venv`，不会修改原始研究数据。**不要只下载 README，也不要在 ZIP 预览窗口内运行。**
+完成后到 `回归结果解读/基准检验/output/公开演示/2018-2023（纯合成演示）/result_synthesis/` 打开 `综合结果总览.xlsx` 或 `merged_full_results.xlsx`。严格筛选的工作表为空不一定是故障，先看 `full` 和“假设明细”。
 
-演示结束后，按终端提示打开 `result_synthesis/综合结果总览.xlsx`。先看 `full`，再看 `require`；严格筛选表为空也可能是正常结果。首次遇到报错时保留终端文字或截图，按[问题模板](.github/ISSUE_TEMPLATE/bug_report.md)反馈。Windows 找不到 Python 时先检查 Launcher；安装依赖失败时先检查网络。
+### 配置保存在哪里
 
-## 配置保存在哪里
+程序、配置、输入数据和默认输出都在你解压/克隆的本机文件夹中。VS Code 只是可选的本地编辑界面；GitHub 网页也不是运行环境。只有你主动提交、推送或上传文件时，内容才会进入远程仓库。请勿把真实研究数据、令牌和个人路径提交到公开仓库。
 
-**你从 GitHub 下载或克隆项目后，配置、运行和结果默认都在你自己的电脑上。**GitHub 链接只提供项目文件；当前版本没有在线配置页面，也不会把本机数据或结果自动上传到 GitHub。VS Code 只是可选的文件编辑器，不是另一个运行或存储位置。
+## 怎么使用自己的数据
 
-| 你做的事 | 实际发生在哪里 |
+先看各文件的分工：
+
+| 位置 | 用途 |
 | --- | --- |
-| 下载 ZIP 并解压，或用 GitHub Desktop 克隆 | 项目文件保存在你选择的本机文件夹；只浏览 GitHub 页面不会安装项目 |
-| 用 VS Code、记事本等打开 YAML | 修改的是该文件夹里的本地副本；VS Code 不会自动把它上传到 GitHub |
-| 运行 Python 脚本 | 在你的电脑上读取本地配置和数据；项目专用 Python 环境位于本地 `.venv/` |
-| 查看回归结果 | 默认保存在本地 `回归结果解读/基准检验/output/<项目名>/`；具体路径可在全局 YAML 修改 |
+| `回归结果解读/基准检验/data/` | 放本地数据；支持 `.dta`、`.csv`、`.xlsx`，也可在全局 YAML 指向别处 |
+| `回归结果解读/基准检验/config/analysis_config.yaml` | 公共数据路径、样本标签、面板列、控制变量、预处理和运行开关 |
+| `回归结果解读/基准检验/skill/main_effect/main.yaml` | 主效应变量关系与假设 |
+| `回归结果解读/基准检验/skill/mediation_effect/mediation.yaml` | 中介效应变量关系与假设 |
+| `回归结果解读/基准检验/skill/moderation_effect/moderation.yaml` | 调节效应变量关系与假设 |
+| `回归结果解读/基准检验/skill/result_synthesis/synthesis.yaml` | 本轮综合的假设和通过门槛 |
+| `回归结果解读/结果复现/reproduction.yaml` | 指定一条结果设定，生成 do 文件 |
+| `回归结果解读/基准检验/output/`、`回归结果输出/` | 回归、整合、复现与论文表输出 |
 
-例如，把 ZIP 解压到“文档/auto-stata”后，要编辑的是该文件夹里的 `回归结果解读/基准检验/config/analysis_config.yaml`，不是 GitHub 网页上的同名文件。若用 GitHub Desktop 克隆，位置取决于你克隆时选择的本机目录。**不要在 GitHub 网页直接填写真实研究数据或私人路径；若主动提交并推送文件，这些内容会进入仓库。**
+文件类型也有分工：`.md` 是人看的说明；`.yaml` 是需要按研究方案修改的配置；`.py` 是运行程序；`.do` 是交给 Stata 执行的命令；`.xlsx` 是结果表。通常先改 YAML，再运行相应 Python，不必修改 Python 源码。
 
-## 已有功能
-
-| 阶段 | 你提供什么 | 程序交付什么 |
-| --- | --- | --- |
-| 基准检验 | 面板数据、变量关系、样本门槛、处理和控制变量设定 | 主效应（线性或 U 型）、中介三条回归路径、调节效应（线性或曲线）的分阶段筛查与逐模型记录 |
-| 结果整合 | 同一批次的假设登记与逐条通过要求 | `full`、`require`、`strong`、`weak` 及假设明细；同一公共设定下的效应可并排核对 |
-| Stata 复现 | 从整合表选一条 `run_id + specification_id` | 精确版和初学者版 do；主效应、调节效应与中介的总效应/a/b-c′ 路径可逐模型复跑，实际运行并核验后生成三类回归表 |
-
-工作顺序：准备数据和设定 → 运行各效应模块 → 整合全部设定 → 选定一条设定 → 审阅、运行 Stata do → 核验并制表。演示只跑前面三步；Stata 是可选的后续复现环节。
-**文件怎么选：**各模块的 `.md` 说明用途和流程，`.yaml` 是用户按研究设计修改的配置，`.py` 是运行入口。第一次使用先读说明，再改配置，最后运行程序。
-
-程序会保存配置快照、模型 ID、处理方案和运行记录。它帮助研究者看见不同合理设定下的结果，而不是自动挑出显著的一行。详细的字段、阶段和输出说明见[基准检验手册](回归结果解读/基准检验/全局.md)。
-
-## 使用自己的数据
-
-1. **准备输入。**支持 `.dta`、`.csv`、`.xlsx`。先按研究方案处理年份、行业、ST 等样本筛选，确认企业 ID 与年份组合唯一，核对变量名、缺失值和数据授权。不要把未授权研究数据上传到 GitHub。
-2. **填写本地全局 YAML。**在你下载的项目文件夹中打开 [analysis_config.yaml](回归结果解读/基准检验/config/analysis_config.yaml)，修改 `data.input_file`、面板列、处理方案、控制变量、输出位置与模块开关。`data.input_file` 的相对路径从本地 `回归结果解读/基准检验/` 起算；也可使用你电脑上的绝对路径。`sample_period` 和 `sample_rules` 仅用于说明与目录命名，**不会自动筛选数据行**。
-3. **填写假设。**分别核对[主效应](回归结果解读/基准检验/skill/main_effect/main.yaml)、[中介效应](回归结果解读/基准检验/skill/mediation_effect/mediation.yaml)、[调节效应](回归结果解读/基准检验/skill/moderation_effect/moderation.yaml)配置中的变量位置、关系与假设方向；需要汇总时，再在 [synthesis.yaml](回归结果解读/基准检验/skill/result_synthesis/synthesis.yaml)登记假设和筛选门槛。
-4. **依次运行。**在项目根目录按下方顺序执行；关闭某效应模块时跳过对应行，并同步检查 synthesis 登记。不要同时运行同一项目的多个模块。
-
-```bash
-.venv/bin/python 回归结果解读/基准检验/skill/other/config_validation.py
-.venv/bin/python 回归结果解读/基准检验/skill/main_effect/run_main_effect.py
-.venv/bin/python 回归结果解读/基准检验/skill/mediation_effect/run_mediation_effect.py
-.venv/bin/python 回归结果解读/基准检验/skill/moderation_effect/run_moderation_effect.py
-.venv/bin/python 回归结果解读/基准检验/skill/result_synthesis/run_result_synthesis.py
+```mermaid
+flowchart TD
+    A[准备并核查自己的面板数据] --> B[填写全局 analysis_config.yaml]
+    B --> C[填写启用模块的假设 YAML]
+    C --> D[配置检查并运行主效应/中介/调节]
+    D --> E[填写 synthesis.yaml 并整合结果]
+    E --> F[在 full 等表中选一条设定]
+    F --> G[填写 reproduction.yaml 并生成 do]
+    G --> H[人工核对后用 Stata 执行 do]
+    H --> I[用 --collect 收集与核验论文表]
 ```
 
-Windows 用户先在 `cmd` 执行 `chcp 65001` 和 `set PYTHONUTF8=1`，再把每行的 `.venv/bin/python` 换成 `.venv\Scripts\python.exe`。最短演示不需要手工运行这些命令；这里是切换到自己数据后的步骤。
+1. **准备数据。** 先按研究设计筛好年份、行业、ST 等样本，检查企业-年份是否唯一、变量口径和缺失情况，保留原始数据与筛选记录。全局 YAML 的 `sample_period`、`sample_rules` **只是标签，不会自动筛选样本**。
+2. **填公共配置。** 在 [全局配置](回归结果解读/基准检验/config/analysis_config.yaml) 中设置 `data.input_file`（相对路径从“基准检验”目录算起）、面板列名、控制变量及处理方案；把 `project.name` 改成自己的项目名。变量名必须与数据列名一致。只启用实际需要的模块。
+3. **填假设。** 分别在[主效应](回归结果解读/基准检验/skill/main_effect/main.yaml)、[中介效应](回归结果解读/基准检验/skill/mediation_effect/mediation.yaml)、[调节效应](回归结果解读/基准检验/skill/moderation_effect/moderation.yaml) YAML 中配置本研究的关系；没做的模块不必强行运行。先读[全局说明](回归结果解读/基准检验/全局.md)和各模块同目录说明文件。
+4. **检查并运行回归。** 在项目根目录的命令提示符/终端中，依次运行下面命令。Windows 先在资源管理器打开项目文件夹，在地址栏输入 `cmd` 回车；macOS 使用上面进入项目目录的方法。只运行全局 YAML 中启用的模块；若禁用某模块，也把下方相应命令略去。
 
-需要 Stata do 时，打开[结果复现使用说明](回归结果解读/结果复现/复现SKILL.md)。复现模块**只生成文件，不会自动安装 Stata 扩展或启动 Stata**；请先核对原始数据路径、公式和处理口径，再运行 do。
+Windows：
+
+```bat
+.venv\Scripts\python.exe "回归结果解读\基准检验\skill\other\config_validation.py" "回归结果解读\基准检验\config\analysis_config.yaml"
+.venv\Scripts\python.exe "回归结果解读\基准检验\skill\main_effect\run_main_effect.py"
+.venv\Scripts\python.exe "回归结果解读\基准检验\skill\mediation_effect\run_mediation_effect.py"
+.venv\Scripts\python.exe "回归结果解读\基准检验\skill\moderation_effect\run_moderation_effect.py"
+```
+
+macOS：
+
+```bash
+.venv/bin/python "回归结果解读/基准检验/skill/other/config_validation.py" "回归结果解读/基准检验/config/analysis_config.yaml"
+.venv/bin/python "回归结果解读/基准检验/skill/main_effect/run_main_effect.py"
+.venv/bin/python "回归结果解读/基准检验/skill/mediation_effect/run_mediation_effect.py"
+.venv/bin/python "回归结果解读/基准检验/skill/moderation_effect/run_moderation_effect.py"
+```
+
+5. **整合结果。** 在 [synthesis.yaml](回归结果解读/基准检验/skill/result_synthesis/synthesis.yaml) 登记本轮纳入的假设与要求；完成本轮启用的回归后，运行：
+
+```text
+Windows: .venv\Scripts\python.exe "回归结果解读\基准检验\skill\result_synthesis\run_result_synthesis.py" "回归结果解读\基准检验\config\analysis_config.yaml"
+macOS:   .venv/bin/python "回归结果解读/基准检验/skill/result_synthesis/run_result_synthesis.py" "回归结果解读/基准检验/config/analysis_config.yaml"
+```
+
+输出在当前项目、样本目录下的 `result_synthesis/`。从 `综合结果总览.xlsx` 或 `merged_full_results.xlsx` 查看设定，不要只看“通过”字样。
+6. **选择一条设定生成复现文件。** 在 [reproduction.yaml](回归结果解读/结果复现/reproduction.yaml) 把 `source.synthesis_file` 指向本轮 `result_synthesis/merged_full_results.xlsx`；从同一行复制 `run_id` 和 `specification_id` 到 `selection`。运行 `run_reproduction.py`。它只生成 `exact.do` 和/或 `beginner.do`，**不会替你运行 Stata**。
+7. **执行并核对。** 先检查生成的 do 文件中的路径、样本与变量，再用有使用权的 [Stata](https://www.stata.com/install-guide/) 执行**整份** do 文件。简明版还需安装 `winsor2`、`reghdfe` 等 Stata 扩展；`esttab` 可选，用于 RTF 表。精确版与简明版处理口径不完全相同，不要把两版结果混成同一张历史复现表。
+8. **收集实际估计结果。** Stata 完成后，在项目根目录运行下方收集命令，核对日志、系数和表格，再判断能否用于论文；未执行 do 文件不能凭筛选标签生成真实论文回归表。
+
+```text
+Windows: .venv\Scripts\python.exe "回归结果解读\结果复现\run_reproduction.py" --collect
+macOS:   .venv/bin/python "回归结果解读/结果复现/run_reproduction.py" --collect
+```
+
+生成 do 的命令与上面相同，只需去掉 `--collect`。更详细的配置和输出说明见[全局说明](回归结果解读/基准检验/全局.md)与[结果复现说明](回归结果解读/结果复现/复现SKILL.md)。
 
 ## 结果怎么读
 
-整合表把一条公共设定固定为相同的样本门槛、处理方案、控制变量组合与标准误设定。四张表都依据各模块 C 阶段的假设级结果筛选：
+| 工作表 | 含义 |
+| --- | --- |
+| `full` | 本轮已执行的公共设定；失败、未通过和缺少 C 阶段结果也保留 |
+| `require` | 满足用户在 synthesis 中逐假设设置的 `required_pass` 门槛 |
+| `strong` | 本轮纳入的全部假设均强通过 |
+| `weak` | 本轮纳入的全部假设至少弱通过；强通过也算在内 |
+| `假设明细`、`字段说明` | 查看逐假设状态及字段定义 |
 
-| 工作表 | 含义 | 先看什么 |
-| --- | --- | --- |
-| `full` | 全部已执行的公共设定，包含失败、未通过或缺少 C 结果的情况 | 是否成功运行、缺失原因、各效应 `model_id` |
-| `require` | 满足你在 synthesis 为各假设指定的 `required_pass` 条件 | 通过了哪些假设、处理方案和控制组合 |
-| `strong` | 本轮纳入综合的全部假设都强通过 | 是否为空；不要把筛选标签当因果结论 |
-| `weak` | 本轮纳入综合的全部假设至少弱通过，强通过也计入 | 与 `strong` 比较，但仍检查各模型明细 |
-
-精确版 do 只复现选定设定下**已有 C 结果**的模型；简明版可以把缺少 C 的已启用假设标为“定向补充复测”。`candidate`、`strong_pass` 和 `weak_pass` 都是预设规则下的筛查标签。中介三条路径的回归不等于 Bootstrap 间接效应确认；U 型还要检查拐点及观察区间，模型最终样本也可能不同。论文使用前请核对 N、系数、标准误和原始数据，并补充合适的稳健性与识别论证。
+`require`、`strong`、`weak` 为空时，先在 `full` 和“假设明细”检查失败、缺少 C 结果或门槛设置。精确版 do 只复现选定设定下**已有 C 结果**的模型；简明版可把缺少 C 的已启用假设作为新增复测，不能把它说成历史模型。不同模型的最终样本也可能不同。**候选模型、强通过、弱通过都是程序筛选标签，不等于经济学意义上的因果证明、论文检验已通过，或 Stata 已完成复现。**论文表只能使用实际执行并核对后的估计结果。
 
 ## 边界与路线图
 
-| 当前开源版 | 后续规划，尚未交付 |
-| --- | --- |
-| 本地 YAML 配置、基准效应筛查、同设定整合、选定结果的 Stata do 复现 | 变量下载与构造、设定曲线及稳健性分析、内生性诊断与检验建议、零代码网页端 |
-
-本项目目前面向可整理成企业面板数据的研究问题；不承诺自动完成数据下载、因果识别或论文写作。
+- 当前针对 **U 型/倒 U 型** 的判定只用于初筛。研究者仍需检查拐点是否在实际观测区间内，并结合斜率、合适的专门检验与理论解释，不能仅凭标签断言 U 型成立。
+- 中介模块提供路径回归的候选证据，**尚不等于 Bootstrap 间接效应确认**；对识别假设、置信区间和因果解释仍需独立核查。
+- 生成的 do 文件必须人工检查数据路径、样本筛选、变量定义、预处理、固定效应、聚类标准误和实际运行日志。简明版使用常见 Stata 命令帮助学习，可能与 Python 精确口径有数值差异。
+- 当前不自动下载研究变量，也不代替变量构造、稳健性检验、内生性处理或论文写作。后续计划逐步补齐数据下载与变量构造、Bootstrap 间接效应确认、稳健性/内生性模块，并最终探索**零代码网页端**，让使用流程更简单；这些功能目前尚未上线，也不承诺具体上线时间。
 
 ## 反馈与项目
 
-| 项目 | 信息 |
-| --- | --- |
-| 资助 | 吉林大学 OPC 课题资助项目（2026OPC016） |
-| 许可证 | [AGPL-3.0](LICENSE)。未来托管服务及二次开发应自行核对许可义务。 |
-| 数据 | 演示使用纯合成数据；仓库内另有获授权的测试数据，其来源与使用范围见[数据说明](DATA_NOTICE.md)。 |
-| 反馈 | 在 [GitHub Issues](https://github.com/18810336759/AutoStata-Empirical-Traversal-Tool/issues) 按模板提交系统版本、操作步骤和错误信息。安全问题见 [SECURITY.md](SECURITY.md)。 |
+欢迎按文档独立试用合成演示，并通过仓库 [Issues](https://github.com/18810336759/AutoStata-Empirical-Traversal-Tool/issues) 反馈操作步骤、报错截图和预期结果；请先删除截图或日志中的真实数据、个人路径与密钥。若仓库仍为 Private，只有获授权账号可提交 Issue；无法访问时请联系仓库维护者。安全问题请先看 [SECURITY.md](SECURITY.md)，贡献方式见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-公开前仓库仍为 **Private**，未受邀者暂时打不开 Issues。提交截图前请遮住个人路径、密钥和研究数据。更完整的使用说明见[基准检验手册](回归结果解读/基准检验/全局.md)、[结果整合说明](回归结果解读/基准检验/skill/result_synthesis/result_synthesis.md)和[复现说明](回归结果解读/结果复现/复现SKILL.md)；发布门槛见[检查表](RELEASE_CHECKLIST.md)。
+项目采用 [AGPL-3.0 许可证](LICENSE)。项目获得**吉林大学 OPC 课题（2026OPC016）**资助。演示与测试数据的使用说明见 [DATA_NOTICE.md](DATA_NOTICE.md)，公开发布前的核查事项见[检查表](RELEASE_CHECKLIST.md)。进一步阅读：[基准检验手册](回归结果解读/基准检验/全局.md)、[结果整合说明](回归结果解读/基准检验/skill/result_synthesis/result_synthesis.md)、[复现说明](回归结果解读/结果复现/复现SKILL.md)。有关统计方法和代码口径，以各模块说明文档、配置和实际运行输出为准；欢迎关注后续版本，但请以当前已发布功能为准。
